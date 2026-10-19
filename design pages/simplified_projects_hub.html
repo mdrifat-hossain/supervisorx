@@ -1,0 +1,383 @@
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>AuraSync | Projects</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;family=Geist:wght@100..900&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "primary-fixed": "#d8e2ff",
+                    "secondary-container": "#464a4b",
+                    "on-primary": "#002e6a",
+                    "primary-container": "#4d8eff",
+                    "on-surface": "#d8e3fb",
+                    "on-background": "#d8e3fb",
+                    "primary-fixed-dim": "#adc6ff",
+                    "primary": "#adc6ff",
+                    "on-primary-container": "#00285d",
+                    "outline-variant": "#424754",
+                    "inverse-on-surface": "#263143",
+                    "inverse-primary": "#005ac2",
+                    "on-tertiary": "#3c0091",
+                    "on-tertiary-fixed": "#23005c",
+                    "on-secondary-container": "#b6b9bb",
+                    "secondary-fixed": "#e0e3e5",
+                    "tertiary-fixed": "#e9ddff",
+                    "surface-container": "#152031",
+                    "secondary-fixed-dim": "#c4c7c9",
+                    "on-error": "#690005",
+                    "on-tertiary-container": "#340080",
+                    "on-secondary-fixed-variant": "#444749",
+                    "surface-container-lowest": "#040e1f",
+                    "secondary": "#c4c7c9",
+                    "tertiary-container": "#a078ff",
+                    "on-secondary-fixed": "#191c1e",
+                    "on-primary-fixed": "#001a42",
+                    "surface-dim": "#081425",
+                    "surface-container-high": "#1f2a3c",
+                    "on-primary-fixed-variant": "#004395",
+                    "outline": "#8c909f",
+                    "on-secondary": "#2d3133",
+                    "background": "#081425",
+                    "surface": "#081425",
+                    "on-tertiary-fixed-variant": "#5516be",
+                    "inverse-surface": "#d8e3fb",
+                    "tertiary": "#d0bcff",
+                    "surface-variant": "#2a3548",
+                    "surface-tint": "#adc6ff",
+                    "surface-bright": "#2f3a4c",
+                    "error-container": "#93000a",
+                    "error": "#ffb4ab",
+                    "on-surface-variant": "#c2c6d6",
+                    "on-error-container": "#ffdad6",
+                    "tertiary-fixed-dim": "#d0bcff",
+                    "surface-container-highest": "#2a3548",
+                    "surface-container-low": "#111c2d"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "gutter": "20px",
+                    "xs": "4px",
+                    "2xl": "48px",
+                    "sm": "8px",
+                    "xl": "32px",
+                    "sidebar-width": "260px",
+                    "lg": "24px",
+                    "md": "16px",
+                    "container-max": "1440px",
+                    "base": "4px"
+            },
+            "fontFamily": {
+                    "display-lg": ["Geist"],
+                    "headline-md": ["Geist"],
+                    "body-md": ["Geist"],
+                    "body-lg": ["Geist"],
+                    "headline-lg": ["Geist"],
+                    "label-md": ["JetBrains Mono"],
+                    "headline-lg-mobile": ["Geist"],
+                    "code-sm": ["JetBrains Mono"]
+            },
+            "fontSize": {
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.04em", "fontWeight": "700"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "body-md": ["15px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "label-md": ["13px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "code-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #081425;
+            color: #d8e3fb;
+            font-family: 'Geist', sans-serif;
+            overflow: hidden;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #424754;
+            border-radius: 10px;
+        }
+        .glass-panel {
+            background: rgba(21, 32, 49, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body class="flex h-screen w-screen overflow-hidden">
+<!-- Left Sidebar (Consistent with Dashboard) -->
+<aside class="w-[260px] flex-shrink-0 bg-surface-container-lowest border-r border-outline-variant/20 flex flex-col z-50">
+<div class="p-lg">
+<h1 class="font-headline-md text-headline-md font-bold text-primary tracking-tight">AuraSync</h1>
+</div>
+<nav class="flex-1 px-md space-y-xs overflow-y-auto custom-scrollbar">
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 transition-colors group" href="#">
+<span class="material-symbols-outlined text-[20px]">dashboard</span>
+<span class="font-label-md text-label-md">Dashboard</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg bg-primary-container/10 text-primary border border-primary/20 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">folder_open</span>
+<span class="font-label-md text-label-md">Projects</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">psychology</span>
+<span class="font-label-md text-label-md">Research Graph</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">database</span>
+<span class="font-label-md text-label-md">Datasets</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">auto_awesome</span>
+<span class="font-label-md text-label-md">AI Lab</span>
+</a>
+<div class="pt-xl pb-sm px-md">
+<span class="text-[10px] font-bold uppercase tracking-widest text-outline">Teams</span>
+</div>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px] text-tertiary">group</span>
+<span class="font-label-md text-label-md">Quantum NLP</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px] text-secondary">group</span>
+<span class="font-label-md text-label-md">Bio-Synthetic Lab</span>
+</a>
+</nav>
+<div class="p-md mt-auto border-t border-outline-variant/10">
+<div class="flex items-center gap-md p-sm rounded-xl hover:bg-surface-variant/30 transition-colors cursor-pointer">
+<div class="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary font-bold text-[12px]">DR</div>
+<div class="flex-1 min-w-0">
+<p class="font-label-md text-label-md truncate">Dr. Researcher</p>
+<p class="text-[10px] text-on-surface-variant truncate">Premium Plan</p>
+</div>
+<span class="material-symbols-outlined text-[18px] text-on-surface-variant">settings</span>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col relative overflow-hidden bg-background">
+<!-- Decorative Ambient Light -->
+<div class="absolute top-[-10%] right-[-5%] w-[400px] h-[400px] bg-primary/5 rounded-full blur-[120px] pointer-events-none"></div>
+<div class="absolute bottom-[-10%] left-[-5%] w-[300px] h-[300px] bg-tertiary/5 rounded-full blur-[100px] pointer-events-none"></div>
+<!-- Top Bar -->
+<header class="h-16 flex items-center justify-between px-xl border-b border-outline-variant/20 bg-background/50 backdrop-blur-md z-40">
+<div class="flex items-center gap-lg">
+<h2 class="font-headline-md text-headline-md text-on-surface">Projects</h2>
+<div class="relative w-72 lg:w-96 group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors text-[20px]">search</span>
+<input class="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl py-2 pl-10 pr-4 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all font-body-md text-body-md" placeholder="Search projects, domains, researchers..." type="text">
+</div>
+</div>
+<div class="flex items-center gap-md">
+<button class="flex items-center gap-sm px-md py-2 text-on-surface-variant hover:bg-surface-variant/30 rounded-lg transition-all active:scale-95">
+<span class="material-symbols-outlined text-[20px]">filter_list</span>
+<span class="font-label-md text-label-md">Filter</span>
+</button>
+<button class="flex items-center gap-sm bg-primary text-on-primary font-bold px-lg py-2.5 rounded-lg shadow-lg shadow-primary/20 hover:brightness-110 active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">add</span>
+<span class="font-label-md text-label-md">Create Project</span>
+</button>
+</div>
+</header>
+<!-- Project Grid Scrollable Area -->
+<div class="flex-1 overflow-y-auto custom-scrollbar p-xl">
+<!-- Project Grid Layout -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-lg max-w-container-max mx-auto">
+<!-- Project Card 1: Active Neural Net -->
+<div class="group relative flex flex-col bg-surface-container-low border border-outline-variant/20 rounded-xl p-md hover:border-primary/40 hover:shadow-2xl hover:shadow-black/40 transition-all duration-300">
+<div class="flex items-start justify-between mb-md">
+<div>
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-primary/10 text-primary border border-primary/20 mb-sm">NEURAL NETWORKS</span>
+<h3 class="font-headline-md text-body-lg font-semibold text-on-surface group-hover:text-primary transition-colors">Cognitive Mapper v4</h3>
+</div>
+<div class="flex -space-x-2">
+<div class="w-7 h-7 rounded-full border-2 border-surface-container-low bg-surface-container-high flex items-center justify-center text-[10px] font-bold">AL</div>
+<div class="w-7 h-7 rounded-full border-2 border-surface-container-low bg-surface-container-high flex items-center justify-center text-[10px] font-bold">SK</div>
+</div>
+</div>
+<p class="text-on-surface-variant font-body-md text-body-md mb-lg line-clamp-2 leading-relaxed">
+                        Exploration of latent space dynamics in high-dimensional transformer models for predictive linguistic synthesis and structural analysis.
+                    </p>
+<div class="flex items-center gap-xl mb-lg">
+<div class="flex items-center gap-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">description</span>
+<span class="font-label-md text-label-md">12 Papers</span>
+</div>
+<div class="flex items-center gap-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">dataset</span>
+<span class="font-label-md text-label-md">4.2 TB</span>
+</div>
+</div>
+<div class="mt-auto pt-md border-t border-outline-variant/10"><div class="flex items-center gap-sm">
+<button class="flex-1 py-2 bg-primary text-on-primary font-bold rounded-lg text-label-md hover:brightness-110 transition-all">Open</button>
+<button class="p-2 hover:bg-surface-variant/40 rounded-lg text-on-surface-variant transition-colors" title="Download"><span class="material-symbols-outlined text-[20px]">download</span></button>
+<button class="p-2 hover:bg-surface-variant/40 rounded-lg text-on-surface-variant transition-colors" title="Settings"><span class="material-symbols-outlined text-[20px]">settings</span></button>
+</div></div>
+</div>
+<!-- Project Card 2: Bioinformatics -->
+<div class="group relative flex flex-col bg-surface-container-low border border-outline-variant/20 rounded-xl p-md hover:border-tertiary/40 hover:shadow-2xl hover:shadow-black/40 transition-all duration-300">
+<div class="flex items-start justify-between mb-md">
+<div>
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-tertiary/10 text-tertiary border border-tertiary/20 mb-sm">BIO-INFORMATICS</span>
+<h3 class="font-headline-md text-body-lg font-semibold text-on-surface group-hover:text-tertiary transition-colors">Genome Horizon</h3>
+</div>
+<div class="flex -space-x-2">
+<div class="w-7 h-7 rounded-full border-2 border-surface-container-low bg-surface-container-high flex items-center justify-center text-[10px] font-bold">JD</div>
+</div>
+</div>
+<p class="text-on-surface-variant font-body-md text-body-md mb-lg line-clamp-2 leading-relaxed">
+                        Cross-species genetic sequencing using probabilistic AI models to identify novel protein folding patterns in extremophiles.
+                    </p>
+<div class="flex items-center gap-xl mb-lg">
+<div class="flex items-center gap-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">description</span>
+<span class="font-label-md text-label-md">8 Papers</span>
+</div>
+<div class="flex items-center gap-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">dataset</span>
+<span class="font-label-md text-label-md">12.5 TB</span>
+</div>
+</div>
+<div class="mt-auto pt-md border-t border-outline-variant/10"><div class="flex items-center gap-sm">
+<button class="flex-1 py-2 bg-tertiary text-on-tertiary font-bold rounded-lg text-label-md hover:brightness-110 transition-all">Open</button>
+<button class="p-2 hover:bg-surface-variant/40 rounded-lg text-on-surface-variant transition-colors" title="Download"><span class="material-symbols-outlined text-[20px]">download</span></button>
+<button class="p-2 hover:bg-surface-variant/40 rounded-lg text-on-surface-variant transition-colors" title="Settings"><span class="material-symbols-outlined text-[20px]">settings</span></button>
+</div></div>
+</div>
+<!-- Project Card 3: Quantum Computing -->
+<div class="group relative flex flex-col bg-surface-container-low border border-outline-variant/20 rounded-xl p-md hover:border-secondary/40 hover:shadow-2xl hover:shadow-black/40 transition-all duration-300">
+<div class="flex items-start justify-between mb-md">
+<div>
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-secondary/10 text-secondary border border-secondary/20 mb-sm">QUANTUM PHYSICS</span>
+<h3 class="font-headline-md text-body-lg font-semibold text-on-surface group-hover:text-secondary transition-colors">Entanglement Viz</h3>
+</div>
+</div>
+<p class="text-on-surface-variant font-body-md text-body-md mb-lg line-clamp-2 leading-relaxed">
+                        Visualizing non-local correlations in multi-qubit systems through AI-enhanced topological mapping and error correction.
+                    </p>
+<div class="flex items-center gap-xl mb-lg">
+<div class="flex items-center gap-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">description</span>
+<span class="font-label-md text-label-md">24 Papers</span>
+</div>
+<div class="flex items-center gap-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">dataset</span>
+<span class="font-label-md text-label-md">850 GB</span>
+</div>
+</div>
+<div class="mt-auto pt-md border-t border-outline-variant/10"><div class="flex items-center gap-sm">
+<button class="flex-1 py-2 bg-secondary text-on-secondary font-bold rounded-lg text-label-md hover:brightness-110 transition-all">Open</button>
+<button class="p-2 hover:bg-surface-variant/40 rounded-lg text-on-surface-variant transition-colors" title="Download"><span class="material-symbols-outlined text-[20px]">download</span></button>
+<button class="p-2 hover:bg-surface-variant/40 rounded-lg text-on-surface-variant transition-colors" title="Settings"><span class="material-symbols-outlined text-[20px]">settings</span></button>
+</div></div>
+</div>
+<!-- Project Card 4: LLM Ethics -->
+<div class="group relative flex flex-col bg-surface-container-low border border-outline-variant/20 rounded-xl p-md hover:border-primary/40 hover:shadow-2xl hover:shadow-black/40 transition-all duration-300">
+<div class="flex items-start justify-between mb-md">
+<div>
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-primary/10 text-primary border border-primary/20 mb-sm">AI ETHICS</span>
+<h3 class="font-headline-md text-body-lg font-semibold text-on-surface group-hover:text-primary transition-colors">Bias Sentinel</h3>
+</div>
+<div class="flex -space-x-2">
+<div class="w-7 h-7 rounded-full border-2 border-surface-container-low bg-surface-container-high flex items-center justify-center text-[10px] font-bold">TM</div>
+<div class="w-7 h-7 rounded-full border-2 border-surface-container-low bg-surface-container-high flex items-center justify-center text-[10px] font-bold">RB</div>
+</div>
+</div>
+<p class="text-on-surface-variant font-body-md text-body-md mb-lg line-clamp-2 leading-relaxed">
+                        Automated detection of socio-cultural biases in large language models using contrastive probe analysis.
+                    </p>
+<div class="flex items-center gap-xl mb-lg">
+<div class="flex items-center gap-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">description</span>
+<span class="font-label-md text-label-md">5 Papers</span>
+</div>
+<div class="flex items-center gap-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">dataset</span>
+<span class="font-label-md text-label-md">200 GB</span>
+</div>
+</div>
+<div class="mt-auto pt-md border-t border-outline-variant/10"><div class="flex items-center gap-sm">
+<button class="flex-1 py-2 bg-primary text-on-primary font-bold rounded-lg text-label-md hover:brightness-110 transition-all">Open</button>
+<button class="p-2 hover:bg-surface-variant/40 rounded-lg text-on-surface-variant transition-colors" title="Download"><span class="material-symbols-outlined text-[20px]">download</span></button>
+<button class="p-2 hover:bg-surface-variant/40 rounded-lg text-on-surface-variant transition-colors" title="Settings"><span class="material-symbols-outlined text-[20px]">settings</span></button>
+</div></div>
+</div>
+<!-- Create New Project Card Placeholder -->
+<div class="group flex flex-col items-center justify-center bg-surface-container-lowest border-2 border-dashed border-outline-variant/30 rounded-xl p-md hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer min-h-[340px]">
+<div class="w-16 h-16 rounded-full bg-surface-variant/20 flex items-center justify-center text-primary group-hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined text-[32px]">add_circle</span>
+</div>
+<span class="mt-md font-headline-md text-body-lg font-semibold text-on-surface-variant group-hover:text-on-surface transition-colors">Start New Research</span>
+<p class="mt-sm text-center text-outline text-[13px] px-lg">Initialize a new canvas for your next breakthrough project.</p>
+</div>
+</div>
+</div>
+<!-- AI Assistant Floating Panel -->
+<div class="absolute bottom-6 right-6 z-50">
+<div class="glass-panel rounded-2xl p-md shadow-2xl border-primary/20 w-[320px] transform transition-all duration-500 hover:translate-y-[-4px]">
+<div class="flex items-center justify-between mb-md">
+<div class="flex items-center gap-sm">
+<div class="relative w-2 h-2">
+<div class="absolute inset-0 bg-primary rounded-full animate-ping"></div>
+<div class="relative w-2 h-2 bg-primary rounded-full"></div>
+</div>
+<span class="font-label-md text-label-md text-primary font-bold">Aura Assistant</span>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+<p class="text-[13px] leading-relaxed text-on-surface mb-md">
+                    "I've identified 3 potential research gaps in <span class="text-primary font-medium">Genome Horizon</span> based on your latest papers. Would you like a synthesis report?"
+                </p>
+<div class="flex gap-sm">
+<button class="flex-1 py-1.5 bg-primary text-on-primary font-bold rounded-lg text-[12px] hover:brightness-110">Generate Report</button>
+<button class="px-3 py-1.5 bg-surface-variant/40 text-on-surface rounded-lg text-[12px] hover:bg-surface-variant/60">Dismiss</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Project Details Sidebar (Initially Hidden for Cleanliness) -->
+<script>
+        // Simple micro-interactions
+        document.querySelectorAll('.group').forEach(card => {
+            card.addEventListener('mouseenter', () => {
+                // Potential for hover animations or fetching preview data
+            });
+        });
+
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === '/' && !e.target.matches('input')) {
+                e.preventDefault();
+                document.querySelector('input').focus();
+            }
+        });
+    </script>
+</body></html>

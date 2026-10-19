@@ -1,0 +1,923 @@
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>AuraSync / Cognitive Mapper v4 - Find Papers AI Chatbot</title>
+<!-- Material Symbols Outlined Font -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<!-- Tailwind CSS with Forms and Container Queries plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "secondary-container": "#464a4b",
+            "on-secondary": "#2d3133",
+            "surface-tint": "#adc6ff",
+            "on-primary-fixed-variant": "#004395",
+            "background": "#081425",
+            "on-surface": "#d8e3fb",
+            "secondary": "#c4c7c9",
+            "surface-container-high": "#1f2a3c",
+            "surface-container": "#152031",
+            "on-tertiary-fixed": "#23005c",
+            "secondary-fixed-dim": "#c4c7c9",
+            "on-secondary-container": "#b6b9bb",
+            "surface-variant": "#2a3548",
+            "surface": "#081425",
+            "on-tertiary-container": "#340080",
+            "surface-bright": "#2f3a4c",
+            "on-error-container": "#ffdad6",
+            "inverse-on-surface": "#263143",
+            "on-background": "#d8e3fb",
+            "surface-container-lowest": "#040e1f",
+            "on-secondary-fixed": "#191c1e",
+            "on-primary-fixed": "#001a42",
+            "inverse-primary": "#005ac2",
+            "on-surface-variant": "#c2c6d6",
+            "error": "#ffb4ab",
+            "tertiary-fixed": "#e9ddff",
+            "primary-container": "#4d8eff",
+            "primary-fixed-dim": "#adc6ff",
+            "on-error": "#690005",
+            "outline-variant": "#424754",
+            "error-container": "#93000a",
+            "surface-container-highest": "#2a3548",
+            "surface-container-low": "#111c2d",
+            "tertiary-fixed-dim": "#d0bcff",
+            "on-primary": "#002e6a",
+            "on-primary-container": "#00285d",
+            "outline": "#8c909f",
+            "primary-fixed": "#d8e2ff",
+            "on-tertiary-fixed-variant": "#5516be",
+            "inverse-surface": "#d8e3fb",
+            "on-secondary-fixed-variant": "#444749",
+            "secondary-fixed": "#e0e3e5",
+            "tertiary-container": "#a078ff",
+            "on-tertiary": "#3c0091",
+            "primary": "#adc6ff",
+            "surface-dim": "#081425",
+            "tertiary": "#d0bcff"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "2xl": "48px",
+            "lg": "24px",
+            "container-max": "1440px",
+            "xs": "4px",
+            "base": "4px",
+            "sidebar-width": "260px",
+            "md": "16px",
+            "xl": "32px",
+            "gutter": "20px",
+            "sm": "8px"
+          },
+          "fontFamily": {
+            "display-lg": ["Geist", "sans-serif"],
+            "label-md": ["JetBrains Mono", "monospace"],
+            "headline-md": ["Geist", "sans-serif"],
+            "body-lg": ["Geist", "sans-serif"],
+            "headline-lg-mobile": ["Geist", "sans-serif"],
+            "body-md": ["Geist", "sans-serif"],
+            "headline-lg": ["Geist", "sans-serif"],
+            "code-sm": ["JetBrains Mono", "monospace"]
+          },
+          "fontSize": {
+            "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.04em", "fontWeight": "700" }],
+            "label-md": ["13px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+            "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+            "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+            "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+            "body-md": ["15px", { "lineHeight": "24px", "fontWeight": "400" }],
+            "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+            "code-sm": ["12px", { "lineHeight": "18px", "fontWeight": "400" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Custom scrollbars for data-dense AI terminals */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #081425;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1f2a3c;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #424754;
+    }
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body class="bg-background text-on-surface font-body-md text-body-md antialiased overflow-hidden flex h-screen w-screen selection:bg-primary-container selection:text-on-primary-container">
+<!-- ========================================== -->
+<!-- LEFT GLOBAL SIDEBAR (Shared Component: SideNavBar) -->
+<!-- ========================================== -->
+<aside class="fixed top-0 left-0 h-screen w-sidebar-width flex flex-col justify-between p-4 border-r border-outline-variant/30 bg-surface-container-low dark:bg-surface-container-lowest z-30 select-none">
+<!-- Top Area: Brand & Workspace Switcher -->
+<div class="flex flex-col gap-4">
+<!-- AuraSync Workspace Anchor & Logo -->
+<div class="flex items-center gap-3 px-1 py-1">
+<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-container to-surface-container-high flex items-center justify-center text-on-primary-container shadow-inner border border-primary/20">
+<span class="material-symbols-outlined text-[20px]" data-icon="blur_on">blur_on</span>
+</div>
+<div class="flex flex-col">
+<span class="text-headline-md font-headline-md font-bold text-on-surface leading-tight tracking-tight">Cognitive Mapper v4</span>
+<span class="text-code-sm font-code-sm text-outline tracking-normal">Active Research Workspace</span>
+</div>
+</div>
+<!-- Project Switcher Pill -->
+<div class="flex items-center justify-between px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/40 hover:border-primary/40 transition-colors cursor-pointer group">
+<div class="flex items-center gap-2 overflow-hidden">
+<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+<span class="text-label-md font-label-md text-on-surface truncate">Cognitive Mapper v4</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant group-hover:text-primary transition-colors text-[18px]" data-icon="unfold_more">unfold_more</span>
+</div>
+<!-- Quick Action CTA -->
+<button class="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-primary text-on-primary font-medium text-body-md hover:bg-primary-fixed-dim transition-colors duration-150 active:scale-[0.98] shadow-sm">
+<span class="material-symbols-outlined text-[18px]" data-icon="add">add</span>
+<span class="">New Analysis</span>
+</button>
+<!-- Primary Navigation Tabs -->
+<nav class="flex flex-col gap-1 mt-1">
+<!-- Tab 1: Project Dashboard -->
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant dark:text-on-surface-variant font-normal hover:bg-surface-container-high dark:hover:bg-surface-container hover:text-on-surface dark:hover:text-on-surface transition-colors duration-150 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="dashboard">dashboard</span>
+<span class="text-body-md">Project Dashboard</span>
+</a>
+<!-- Tab 2: Find Papers AI Chatbot (ACTIVE) -->
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface-container dark:bg-surface-container-high text-primary dark:text-primary font-medium hover:bg-surface-container-high dark:hover:bg-surface-container transition-colors duration-150 active:scale-[0.98] shadow-sm border-l-2 border-primary" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="smart_toy" data-weight="fill" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+<span class="text-body-md">Find Papers AI Chatbot</span>
+</a>
+<!-- Tab 3: Upload & Analysis -->
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant dark:text-on-surface-variant font-normal hover:bg-surface-container-high dark:hover:bg-surface-container hover:text-on-surface dark:hover:text-on-surface transition-colors duration-150 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="cloud_upload">cloud_upload</span>
+<span class="text-body-md">Upload &amp; Analysis</span>
+</a>
+<!-- Tab 4: Paper Library -->
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant dark:text-on-surface-variant font-normal hover:bg-surface-container-high dark:hover:bg-surface-container hover:text-on-surface dark:hover:text-on-surface transition-colors duration-150 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="library_books">library_books</span>
+<span class="text-body-md">Paper Library</span>
+</a>
+<!-- Tab 5: Teammates & Settings -->
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant dark:text-on-surface-variant font-normal hover:bg-surface-container-high dark:hover:bg-surface-container hover:text-on-surface dark:hover:text-on-surface transition-colors duration-150 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="group_work">group_work</span>
+<span class="text-body-md">Teammates &amp; Settings</span>
+</a>
+</nav>
+</div>
+<!-- Bottom Footer Profile & Utility Links -->
+<div class="flex flex-col gap-2 pt-3 border-t border-outline-variant/20">
+<nav class="flex flex-col gap-0.5">
+<a class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors duration-150 text-code-sm font-code-sm" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="account_circle">account_circle</span>
+<span class="">Profile &amp; Plan</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors duration-150 text-code-sm font-code-sm" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="tune">tune</span>
+<span class="">Settings</span>
+</a>
+</nav>
+<!-- User Profile Card -->
+<div class="flex items-center justify-between p-2 rounded-lg bg-surface-container-high/60 border border-outline-variant/30 mt-1">
+<div class="flex items-center gap-2.5">
+<div class="relative">
+<img class="w-8 h-8 rounded-full object-cover border border-primary/30" data-alt="Close up portrait photograph of Dr. Researcher in a high-tech computational laboratory, lit with soft cool electric blue and dark navy cinematic fill light, looking confident and scholarly." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBlNJSYDtzth4Ax46PE5vxU9FolyACfCUlHLjkbdHiCL--AmkL0vAoA4spgwGoCJqZxZ4DdO9_KlQrp14lkDepPFmxDhgH5T8tvH_KoYuxMaiziROk972mdQE7ko1FqYz2RrP5UZmyJOhw8eMVOyTQXz_BZWJ6_ssJ9Cogcw-adX9d58m7SfqA3XC6YMgW3TgktjKZMrlkGzEZec43eY7wXcQbwNNebxOes_PfWr5YBCbFkAtSupAtg_A">
+<span class="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-surface"></span>
+</div>
+<div class="flex flex-col">
+<span class="text-body-md font-medium text-on-surface leading-snug">Dr. Researcher</span>
+<span class="text-code-sm font-code-sm text-primary">Premium Plan</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline-variant hover:text-on-surface cursor-pointer text-[18px]" data-icon="more_vert">more_vert</span>
+</div>
+</div>
+</aside>
+<!-- ========================================== -->
+<!-- MAIN WORKSPACE CONTAINER -->
+<!-- ml-sidebar-width for desktop anchor -->
+<!-- ========================================== -->
+<div class="flex-1 flex flex-col ml-[260px] h-screen overflow-hidden bg-background">
+<!-- Top Workspace Navigation Bar (Shared Component: TopNavBar) -->
+<header class="h-14 w-full px-6 flex items-center justify-between bg-surface-container-lowest/80 backdrop-blur-md border-b border-outline-variant/20 z-20 shrink-0">
+<div class="flex items-center gap-6"><a class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container border border-outline-variant/30 text-label-md font-label-md transition-all active:scale-95 shrink-0 group" href="#" title="Back to Projects"><span class="material-symbols-outlined text-[18px] group-hover:-translate-x-0.5 transition-transform" data-icon="arrow_back">arrow_back</span><span class="text-xs font-medium">Exit Project</span></a>
+<!-- Search bar on left -->
+<div class="relative flex items-center w-72">
+<span class="material-symbols-outlined absolute left-3 text-outline text-[18px]" data-icon="search">search</span>
+<input class="w-full bg-surface-container-high/60 border border-outline-variant/30 rounded-lg pl-9 pr-3 py-1.5 text-code-sm font-code-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all" placeholder="Search cognitive workspace..." type="text">
+<kbd class="absolute right-2.5 px-1.5 py-0.5 text-[10px] font-code-sm text-outline border border-outline-variant/40 rounded bg-surface">⌘K</kbd>
+</div>
+<!-- Center Workspace Breadcrumbs / Links -->
+</div>
+<!-- Trailing Action Cluster -->
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-1 border-r border-outline-variant/30 pr-3">
+<button class="p-1.5 text-outline hover:text-on-surface rounded hover:bg-surface-container-high transition-colors" title="Notifications">
+<span class="material-symbols-outlined text-[20px]" data-icon="notifications">notifications</span>
+</button>
+<button class="p-1.5 text-outline hover:text-on-surface rounded hover:bg-surface-container-high transition-colors" title="Help Docs">
+<span class="material-symbols-outlined text-[20px]" data-icon="help">help</span>
+</button>
+<button class="p-1.5 text-outline hover:text-on-surface rounded hover:bg-surface-container-high transition-colors" title="Audit History">
+<span class="material-symbols-outlined text-[20px]" data-icon="history">history</span>
+</button>
+</div>
+<button class="px-3 py-1.5 text-label-md font-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-lg border border-outline-variant/30 transition-all active:scale-95">
+          Invite Member
+        </button>
+<button class="px-3 py-1.5 text-label-md font-label-md bg-primary text-on-primary font-medium rounded-lg hover:bg-primary-fixed-dim transition-all active:scale-95 flex items-center gap-1.5 shadow-sm">
+<span class="material-symbols-outlined text-[16px]" data-icon="rocket_launch">rocket_launch</span>
+<span class="">Deploy Model</span>
+</button>
+</div>
+</header>
+<!-- Workspace Body: 2-Column Split (Left History Rail + Central Discovery Canvas) -->
+<div class="flex-1 flex overflow-hidden relative">
+<!-- ========================================== -->
+<!-- COLUMN 1: Chat History & Session Drawer (~240px) Collapsible -->
+<!-- ========================================== -->
+<aside class="w-[240px] shrink-0 bg-surface-container-low border-r border-outline-variant/20 flex flex-col justify-between overflow-hidden transition-all duration-300 ease-in-out" id="chat-history-sidebar">
+<div class="p-3 flex flex-col gap-3 h-full overflow-hidden w-[240px]">
+<!-- Top Controls: New Chat CTA + Collapse Button -->
+<div class="flex items-center gap-1.5">
+<button class="flex-1 py-2 px-2.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 flex items-center justify-center gap-1.5 font-headline-md text-xs font-medium transition-all active:scale-[0.98] truncate">
+<span class="material-symbols-outlined text-[16px]" data-icon="add_comment">add_comment</span>
+<span class="truncate">+ New Chat</span>
+</button>
+<button class="p-2 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container-high border border-outline-variant/30 transition-colors active:scale-95 shrink-0 flex items-center justify-center" id="collapse-history-btn" onclick="toggleChatHistory(false)" title="Collapse Chat History">
+<span class="material-symbols-outlined text-[18px]" data-icon="chevron_left">chevron_left</span>
+</button>
+</div>
+<!-- Quick Filter Input -->
+<div class="relative">
+<span class="material-symbols-outlined absolute left-2.5 top-2.5 text-outline text-[16px]" data-icon="filter_list">filter_list</span>
+<input class="w-full bg-surface-container-lowest/80 border border-outline-variant/30 rounded-md pl-8 pr-2 py-1.5 text-code-sm font-code-sm text-on-surface placeholder:text-outline/70 focus:outline-none focus:border-primary text-xs" placeholder="Search conversations..." type="text">
+</div>
+<!-- Section Label -->
+<div class="flex items-center justify-between px-1 pt-1">
+<span class="text-code-sm font-code-sm uppercase tracking-wider text-outline text-[11px] font-semibold">Recent Conversations</span>
+<span class="text-code-sm font-code-sm text-outline-variant text-[11px]">4 Total</span>
+</div>
+<!-- Session List -->
+<div class="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
+<!-- Session 1 (Active) -->
+<div class="p-2.5 rounded-lg bg-surface-container-high border border-primary/40 relative cursor-pointer group shadow-sm" id="session-card-1">
+<div class="flex items-start justify-between gap-1">
+<span class="font-headline-md text-body-md font-semibold text-primary truncate leading-snug flex-1" id="session-title-1">Sparse Attention &amp; Entropy Decay</span>
+<div class="flex items-center gap-1 shrink-0">
+<span class="w-1.5 h-1.5 rounded-full bg-primary mt-1"></span>
+<!-- Three dots menu button for renaming -->
+<button class="p-1 -mr-1 rounded hover:bg-surface-container text-outline hover:text-on-surface transition-colors opacity-80 group-hover:opacity-100 flex items-center justify-center" onclick="openRenameModal('session-title-1', 'session-card-1')" title="Rename conversation">
+<span class="material-symbols-outlined text-[16px]" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+</div>
+<div class="flex items-center justify-between mt-2 text-code-sm font-code-sm text-on-surface-variant text-[11px]">
+<span class="flex items-center gap-1 text-primary-fixed-dim">
+<span class="material-symbols-outlined text-[14px]" data-icon="menu_book">menu_book</span>
+                  12 papers discovered
+                </span>
+<span class="text-outline">Active</span>
+</div>
+</div>
+<!-- Session 2 -->
+<div class="p-2.5 rounded-lg bg-surface-container/40 hover:bg-surface-container-high/60 border border-transparent hover:border-outline-variant/30 cursor-pointer transition-all group" id="session-card-2">
+<div class="flex items-start justify-between gap-1">
+<span class="text-body-md text-on-surface truncate leading-snug flex-1" id="session-title-2">Transformer Quantization Latency</span>
+<button class="p-1 -mr-1 rounded hover:bg-surface-container text-outline hover:text-on-surface transition-colors opacity-0 group-hover:opacity-100 flex items-center justify-center shrink-0" onclick="openRenameModal('session-title-2', 'session-card-2')" title="Rename conversation">
+<span class="material-symbols-outlined text-[16px]" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+<div class="flex items-center justify-between mt-2 text-code-sm font-code-sm text-outline text-[11px]">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="menu_book">menu_book</span>
+                  8 papers
+                </span>
+<span class="">3 days ago</span>
+</div>
+</div>
+<!-- Session 3 -->
+<div class="p-2.5 rounded-lg bg-surface-container/40 hover:bg-surface-container-high/60 border border-transparent hover:border-outline-variant/30 cursor-pointer transition-all group" id="session-card-3">
+<div class="flex items-start justify-between gap-1">
+<span class="text-body-md text-on-surface truncate leading-snug flex-1" id="session-title-3">Cross-Species Gene Transformer Benchmarks</span>
+<button class="p-1 -mr-1 rounded hover:bg-surface-container text-outline hover:text-on-surface transition-colors opacity-0 group-hover:opacity-100 flex items-center justify-center shrink-0" onclick="openRenameModal('session-title-3', 'session-card-3')" title="Rename conversation">
+<span class="material-symbols-outlined text-[16px]" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+<div class="flex items-center justify-between mt-2 text-code-sm font-code-sm text-outline text-[11px]">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="menu_book">menu_book</span>
+                  15 papers
+                </span>
+<span class="">Oct 18</span>
+</div>
+</div>
+<!-- Session 4 -->
+<div class="p-2.5 rounded-lg bg-surface-container/40 hover:bg-surface-container-high/60 border border-transparent hover:border-outline-variant/30 cursor-pointer transition-all group" id="session-card-4">
+<div class="flex items-start justify-between gap-1">
+<span class="text-body-md text-on-surface truncate leading-snug flex-1" id="session-title-4">Shadow Gradient Vanishing in LayerNorm</span>
+<button class="p-1 -mr-1 rounded hover:bg-surface-container text-outline hover:text-on-surface transition-colors opacity-0 group-hover:opacity-100 flex items-center justify-center shrink-0" onclick="openRenameModal('session-title-4', 'session-card-4')" title="Rename conversation">
+<span class="material-symbols-outlined text-[16px]" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+<div class="flex items-center justify-between mt-2 text-code-sm font-code-sm text-outline text-[11px]">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="menu_book">menu_book</span>
+                  6 papers
+                </span>
+<span class="">Oct 12</span>
+</div>
+</div>
+</div>
+<!-- Bottom Session Drawer Stats -->
+<div class="pt-2 border-t border-outline-variant/20 flex items-center justify-between text-code-sm font-code-sm text-outline text-xs px-1">
+<span class="">Storage: 41/100 MB</span>
+<span class="text-primary font-medium cursor-pointer hover:underline">Manage</span>
+</div>
+</div>
+</aside>
+<!-- Collapsed History Floating / Edge Expand Dock Tab -->
+<div class="hidden absolute top-3 left-3 z-30 flex items-center" id="expand-history-tab">
+<button class="flex items-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-primary hover:text-on-surface border border-outline-variant/40 shadow-lg backdrop-blur-md transition-all active:scale-95 group" onclick="toggleChatHistory(true)" title="Expand Chat History">
+<span class="material-symbols-outlined text-[18px] group-hover:translate-x-0.5 transition-transform" data-icon="chevron_right">chevron_right</span>
+<span class="material-symbols-outlined text-[16px] text-outline group-hover:text-primary transition-colors" data-icon="chat">chat</span>
+<span class="text-code-sm font-code-sm text-xs font-medium">History</span>
+</button>
+</div>
+<!-- ========================================== -->
+<!-- COLUMN 2: Main Research Stream & Paper Discovery Center -->
+<!-- ========================================== -->
+<main class="flex-1 flex flex-col h-full overflow-hidden bg-background">
+<!-- Top Chat Header -->
+<div class="h-14 px-6 bg-surface-container-lowest border-b border-outline-variant/20 flex items-center justify-between shrink-0 shadow-sm z-10">
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-2">
+<span class="w-2.5 h-2.5 rounded-full bg-primary animate-ping"></span>
+<h1 class="text-headline-md font-headline-md font-semibold text-on-surface tracking-tight text-lg" id="active-chat-header-title">
+                Sparse Attention &amp; Entropy Decay
+              </h1>
+</div>
+<span class="text-outline">/</span>
+<!-- Model Tag Badge -->
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant/40 text-code-sm font-code-sm text-on-surface-variant text-xs">
+<span class="material-symbols-outlined text-[15px] text-tertiary" data-icon="neurology">neurology</span>
+<span class="">AuraSync Scholar-v4 (Connected to ArXiv, Semantic Scholar &amp; PubMed)</span>
+</div>
+</div>
+<!-- Direct Action CTA button to queue -->
+<a class="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-surface-container-high hover:bg-surface-container-highest border border-primary/40 text-primary hover:text-on-surface font-label-md text-label-md font-medium transition-all group shadow-sm active:scale-95" href="#analyze-queue">
+<span class="">Go to Analyze Papers (14 Queued)</span>
+<span class="material-symbols-outlined text-[18px] group-hover:translate-x-1 transition-transform" data-icon="arrow_forward">arrow_forward</span>
+</a>
+</div>
+<!-- Chat Conversation Stream (Scrollable) -->
+<div class="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+<!-- 1. User Message Bubble -->
+<div class="flex items-start justify-end gap-3 max-w-4xl ml-auto">
+<div class="flex flex-col items-end gap-1">
+<div class="bg-primary-container text-on-primary-container px-4 py-3 rounded-2xl rounded-tr-none shadow-sm max-w-2xl font-body-md">
+                Find 10 recent peer-reviewed papers on sparse multi-head attention entropy collapse in large transformer architectures with benchmarking code.
+              </div>
+<span class="text-code-sm font-code-sm text-outline text-[11px] pr-1">10:42 AM · Semantic Search Filter Active</span>
+</div>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-primary text-xs font-bold shrink-0 border border-outline-variant/40">
+              DR
+            </div>
+</div>
+<!-- 2. AI Supervisor Response Bubble -->
+<div class="flex items-start gap-3 max-w-5xl mr-auto">
+<div class="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
+<span class="material-symbols-outlined text-[18px]" data-icon="smart_toy">smart_toy</span>
+</div>
+<div class="flex-1 space-y-4">
+<div class="bg-surface-container-low border border-outline-variant/30 rounded-2xl rounded-tl-none p-4 shadow-sm text-body-md text-on-surface">
+<p class="leading-relaxed">
+                  I've scanned <span class="text-primary font-medium">ArXiv (cs.CL, cs.LG)</span> and <span class="text-primary font-medium">NeurIPS/ICLR proceedings</span> from 2023-2024. Here are 10 highly relevant papers matching your criteria for <span class="text-on-surface font-semibold">Cognitive Mapper v4</span>. You can click <span class="text-primary-fixed-dim font-mono text-xs bg-surface-container px-1 py-0.5 rounded">Download to Project</span> on any card or command me naturally (e.g., <span class="italic text-on-surface-variant">"Download papers 2, 4 and 7"</span>).
+                </p>
+</div>
+<!-- 3. COMPACT PAPER CARDS SECTION (10 Papers with Distinct States) -->
+<div class="space-y-3">
+<div class="flex items-center justify-between pb-1 border-b border-outline-variant/20">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="auto_awesome">auto_awesome</span>
+<span class="font-headline-md text-body-md font-semibold text-on-surface">Discovered Preprints &amp; Conference Papers</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container text-xs font-code-sm text-primary border border-outline-variant/30">10 Verified</span>
+</div>
+<span class="text-code-sm font-code-sm text-outline text-xs">Sorted by Relevance Score • Code Available</span>
+</div>
+<!-- Paper 1: Already in Project - Downloaded -->
+<article class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/20 hover:border-outline-variant/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 group">
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="text-code-sm font-code-sm text-primary font-semibold">#1</span>
+<h3 class="font-headline-md text-body-md font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer truncate">
+                        Entropy-Constrained Sparse Attention in 70B Parameter LLMs
+                      </h3>
+<span class="text-code-sm font-code-sm px-1.5 py-0.2 rounded bg-surface-container-high text-outline text-[11px] border border-outline-variant/30">ArXiv:2403.1192</span>
+</div>
+<p class="text-code-sm font-code-sm text-outline mt-0.5">
+                      Vaswani et al., 2024 • <span class="text-emerald-400/90">PyTorch Code Included</span>
+</p>
+<p class="text-body-md text-on-surface-variant text-sm mt-1 line-clamp-1">
+                      "We demonstrate an analytical bound on entropy collapse during multi-head pruning across 70B checkpoints..."
+                    </p>
+</div>
+<div class="shrink-0 flex items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 text-label-md font-label-md cursor-default" disabled="">
+<span class="material-symbols-outlined text-[16px]" data-icon="check_circle" data-weight="fill" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="">Already in Project - Downloaded</span>
+</button>
+</div>
+</article>
+<!-- Paper 2: Download to Project (Actionable) -->
+<article class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 hover:border-primary/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 group shadow-sm hover:shadow-md">
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="text-code-sm font-code-sm text-primary font-semibold">#2</span>
+<h3 class="font-headline-md text-body-md font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer truncate">
+                        Dynamic Routing of Attention Heads via Top-k Gumbel Softmax
+                      </h3>
+<span class="text-code-sm font-code-sm px-1.5 py-0.2 rounded bg-surface-container-high text-tertiary text-[11px] border border-tertiary/20 font-medium">ICLR 2024</span>
+</div>
+<p class="text-code-sm font-code-sm text-outline mt-0.5">
+                      Zhang, Lin, Bengio, 2024 • Citation Count: 48
+                    </p>
+<p class="text-body-md text-on-surface-variant text-sm mt-1 line-clamp-1">
+                      "Proposes dynamic routing to mitigate representational collapse and gradient starvation during sparse passes..."
+                    </p>
+</div>
+<div class="shrink-0 flex items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-on-primary hover:bg-primary-fixed-dim text-label-md font-label-md font-medium transition-all active:scale-95 shadow-sm">
+<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
+<span class="">Download to Project</span>
+</button>
+</div>
+</article>
+<!-- Paper 3: Download to Project -->
+<article class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 hover:border-primary/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 group">
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="text-code-sm font-code-sm text-primary font-semibold">#3</span>
+<h3 class="font-headline-md text-body-md font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer truncate">
+                        Gradient Starvation and Latent Space Degeneracy in Deep Transformers
+                      </h3>
+<span class="text-code-sm font-code-sm px-1.5 py-0.2 rounded bg-surface-container-high text-tertiary text-[11px] border border-tertiary/20 font-medium">NeurIPS 2023</span>
+</div>
+<p class="text-code-sm font-code-sm text-outline mt-0.5">
+                      Chen &amp; Thorne, 2023 • Benchmark Repo: github.com/deep-trans/grad-starv
+                    </p>
+<p class="text-body-md text-on-surface-variant text-sm mt-1 line-clamp-1">
+                      "Investigating singular value decomposition of attention weights across layers 12-24 under extreme sparsification..."
+                    </p>
+</div>
+<div class="shrink-0 flex items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-on-primary hover:bg-primary-fixed-dim text-label-md font-label-md font-medium transition-all active:scale-95 shadow-sm">
+<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
+<span class="">Download to Project</span>
+</button>
+</div>
+</article>
+<!-- Paper 4: Downloading... 72% (Animated Progress State) -->
+<article class="p-3.5 rounded-xl bg-surface-container-high/70 border border-primary/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 relative overflow-hidden">
+<div class="absolute bottom-0 left-0 h-0.5 bg-primary w-[72%] transition-all duration-500"></div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="text-code-sm font-code-sm text-primary font-semibold">#4</span>
+<h3 class="font-headline-md text-body-md font-semibold text-on-surface truncate">
+                        Sparse Sinkhorn Attention: Preserving Mutual Information
+                      </h3>
+<span class="text-code-sm font-code-sm px-1.5 py-0.2 rounded bg-surface-container text-outline text-[11px] border border-outline-variant/30">ArXiv:2401.0882</span>
+</div>
+<p class="text-code-sm font-code-sm text-outline mt-0.5">
+                      Al-Mansoor et al., 2024 • Optimal Transport Solvers
+                    </p>
+<p class="text-body-md text-on-surface-variant text-sm mt-1 line-clamp-1">
+                      "Utilizing entropic regularized Sinkhorn iterations to enforce maximal row-wise entropy distributions..."
+                    </p>
+</div>
+<div class="shrink-0 flex items-center gap-2 min-w-[190px]">
+<div class="w-full flex flex-col gap-1">
+<div class="flex items-center justify-between text-code-sm font-code-sm text-primary text-xs">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined animate-spin text-[14px]" data-icon="sync">sync</span>
+                          Downloading PDF &amp; Code...
+                        </span>
+<span class="font-bold">72%</span>
+</div>
+<div class="w-full bg-surface-container-lowest h-1.5 rounded-full overflow-hidden border border-outline-variant/20">
+<div class="bg-primary h-full rounded-full w-[72%] animate-pulse"></div>
+</div>
+</div>
+</div>
+</article>
+<!-- Paper 5: Download Failed - Retry State -->
+<article class="p-3.5 rounded-xl bg-surface-container-low border border-error/40 hover:border-error transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 group">
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="text-code-sm font-code-sm text-error font-semibold">#5</span>
+<h3 class="font-headline-md text-body-md font-semibold text-on-surface truncate">
+                        Empirical Study of LayerNorm Entropy Trajectories
+                      </h3>
+<span class="text-code-sm font-code-sm px-1.5 py-0.2 rounded bg-surface-container-high text-outline text-[11px] border border-outline-variant/30">ICML</span>
+</div>
+<p class="text-code-sm font-code-sm text-outline mt-0.5">
+                      Dupont &amp; Klein, 2023 • Gateway Timeout (504) on Institutional Host
+                    </p>
+<p class="text-body-md text-on-surface-variant text-sm mt-1 line-clamp-1">
+                      "Measuring entropy fluctuations post RMSNorm versus classical LayerNorm under zero-shot validation..."
+                    </p>
+</div>
+<div class="shrink-0 flex items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error-container text-on-error-container hover:bg-error-container/80 text-label-md font-label-md font-medium transition-all active:scale-95 shadow-sm border border-error/30">
+<span class="material-symbols-outlined text-[16px] text-error" data-icon="refresh">refresh</span>
+<span class="">Download Failed - Retry</span>
+</button>
+</div>
+</article>
+<!-- Paper 6: Download to Project -->
+<article class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 hover:border-primary/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 group">
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="text-code-sm font-code-sm text-primary font-semibold">#6</span>
+<h3 class="font-headline-md text-body-md font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer truncate">
+                        Attention Sink Phenomena in Quantized Language Models
+                      </h3>
+<span class="text-code-sm font-code-sm px-1.5 py-0.2 rounded bg-surface-container-high text-outline text-[11px] border border-outline-variant/30">ArXiv:2309.17453</span>
+</div>
+<p class="text-code-sm font-code-sm text-outline mt-0.5">
+                      Xiao, Tian et al., 2024 • Code: streaming-llm
+                    </p>
+<p class="text-body-md text-on-surface-variant text-sm mt-1 line-clamp-1">
+                      "Preserving initial token attention values restores massive loss spikes in 4-bit and 8-bit sparse quantization."
+                    </p>
+</div>
+<div class="shrink-0 flex items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-primary hover:text-on-primary text-on-surface border border-outline-variant/40 hover:border-transparent text-label-md font-label-md font-medium transition-all active:scale-95 shadow-sm">
+<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
+<span class="">Download to Project</span>
+</button>
+</div>
+</article>
+<!-- Paper 7: Download to Project -->
+<article class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 hover:border-primary/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 group">
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="text-code-sm font-code-sm text-primary font-semibold">#7</span>
+<h3 class="font-headline-md text-body-md font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer truncate">
+                        Orthogonal Attention Projection for Long-Context Fidelity
+                      </h3>
+<span class="text-code-sm font-code-sm px-1.5 py-0.2 rounded bg-surface-container-high text-tertiary text-[11px] border border-tertiary/20">ACL 2024</span>
+</div>
+<p class="text-code-sm font-code-sm text-outline mt-0.5">
+                      R. Patel, K. Murthy, 2024 • Context Window: 128k
+                    </p>
+<p class="text-body-md text-on-surface-variant text-sm mt-1 line-clamp-1">
+                      "Orthogonality constraints prevent attention matrix rank collapse when context lengths surpass 64k tokens."
+                    </p>
+</div>
+<div class="shrink-0 flex items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-primary hover:text-on-primary text-on-surface border border-outline-variant/40 hover:border-transparent text-label-md font-label-md font-medium transition-all active:scale-95 shadow-sm">
+<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
+<span class="">Download to Project</span>
+</button>
+</div>
+</article>
+<!-- Paper 8: Download to Project -->
+<article class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 hover:border-primary/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 group">
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="text-code-sm font-code-sm text-primary font-semibold">#8</span>
+<h3 class="font-headline-md text-body-md font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer truncate">
+                        Spectral Norm Regularization of Multi-Head Self-Attention
+                      </h3>
+<span class="text-code-sm font-code-sm px-1.5 py-0.2 rounded bg-surface-container-high text-outline text-[11px] border border-outline-variant/30">JMLR 2023</span>
+</div>
+<p class="text-code-sm font-code-sm text-outline mt-0.5">
+                      Foster &amp; Wu, 2023 • Theoretical Bounds
+                    </p>
+<p class="text-body-md text-on-surface-variant text-sm mt-1 line-clamp-1">
+                      "Proving Lipschitz continuity bounds on self-attention outputs under induced matrix spectral norm penalties..."
+                    </p>
+</div>
+<div class="shrink-0 flex items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-primary hover:text-on-primary text-on-surface border border-outline-variant/40 hover:border-transparent text-label-md font-label-md font-medium transition-all active:scale-95 shadow-sm">
+<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
+<span class="">Download to Project</span>
+</button>
+</div>
+</article>
+<!-- Paper 9: Download to Project -->
+<article class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 hover:border-primary/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 group">
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="text-code-sm font-code-sm text-primary font-semibold">#9</span>
+<h3 class="font-headline-md text-body-md font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer truncate">
+                        Cross-Layer Attention Redistribution under Extreme Sparsity
+                      </h3>
+<span class="text-code-sm font-code-sm px-1.5 py-0.2 rounded bg-surface-container-high text-tertiary text-[11px] border border-tertiary/20">EMNLP 2024</span>
+</div>
+<p class="text-code-sm font-code-sm text-outline mt-0.5">
+                      Morozov et al., 2024 • 90% Sparsity Regime
+                    </p>
+<p class="text-body-md text-on-surface-variant text-sm mt-1 line-clamp-1">
+                      "Re-allocating discarded head capacities to lower-order feature layers maintains benchmark perplexity."
+                    </p>
+</div>
+<div class="shrink-0 flex items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-primary hover:text-on-primary text-on-surface border border-outline-variant/40 hover:border-transparent text-label-md font-label-md font-medium transition-all active:scale-95 shadow-sm">
+<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
+<span class="">Download to Project</span>
+</button>
+</div>
+</article>
+<!-- Paper 10: Download to Project -->
+<article class="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 hover:border-primary/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 group">
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="text-code-sm font-code-sm text-primary font-semibold">#10</span>
+<h3 class="font-headline-md text-body-md font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer truncate">
+                        Attention Head Redundancy and Pruning Dynamics
+                      </h3>
+<span class="text-code-sm font-code-sm px-1.5 py-0.2 rounded bg-surface-container-high text-outline text-[11px] border border-outline-variant/30">ArXiv:2402.0451</span>
+</div>
+<p class="text-code-sm font-code-sm text-outline mt-0.5">
+                      S. Gupta et al., 2024 • Multi-GPU Pruning Tool
+                    </p>
+<p class="text-body-md text-on-surface-variant text-sm mt-1 line-clamp-1">
+                      "Analyzing the cosine similarity of head projection matrices to identify deterministic pruning candidates..."
+                    </p>
+</div>
+<div class="shrink-0 flex items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-primary hover:text-on-primary text-on-surface border border-outline-variant/40 hover:border-transparent text-label-md font-label-md font-medium transition-all active:scale-95 shadow-sm">
+<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
+<span class="">Download to Project</span>
+</button>
+</div>
+</article>
+</div>
+</div>
+</div>
+<!-- 4. Follow-up User Message & Execution Bubble -->
+<div class="flex items-start justify-end gap-3 max-w-4xl ml-auto pt-2">
+<div class="flex flex-col items-end gap-1">
+<div class="bg-primary-container text-on-primary-container px-4 py-3 rounded-2xl rounded-tr-none shadow-sm font-body-md">
+                Download papers 2 and 4, then find five more preprints on quantization.
+              </div>
+<span class="text-code-sm font-code-sm text-outline text-[11px] pr-1">10:45 AM</span>
+</div>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-primary text-xs font-bold shrink-0 border border-outline-variant/40">
+              DR
+            </div>
+</div>
+<!-- AI Response to Follow-up -->
+<div class="flex items-start gap-3 max-w-4xl mr-auto">
+<div class="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
+<span class="material-symbols-outlined text-[18px]" data-icon="smart_toy">smart_toy</span>
+</div>
+<div class="space-y-2">
+<div class="bg-surface-container-low border border-outline-variant/30 rounded-2xl rounded-tl-none p-4 shadow-sm text-body-md text-on-surface">
+<p class="">
+                  Queueing papers <strong class="text-primary font-mono">#2</strong> ('Dynamic Routing...') and <strong class="text-primary font-mono">#4</strong> ('Sparse Sinkhorn Attention...') to <span class="font-medium text-on-surface">Cognitive Mapper v4</span> vault. Ingestion will auto-trigger in your background pipeline.
+                </p>
+<div class="mt-3 p-3 rounded-lg bg-surface-container border border-outline-variant/30 flex items-center justify-between">
+<div class="flex items-center gap-2.5">
+<span class="material-symbols-outlined text-primary text-[20px] animate-pulse" data-icon="playlist_add_check">playlist_add_check</span>
+<span class="text-label-md font-label-md text-on-surface">2 Papers Dispatched to Ingestion Pipeline (14 Total Queued)</span>
+</div>
+<a class="text-primary text-xs font-code-sm hover:underline flex items-center gap-1" href="#analyze-queue">
+                    Open Queue
+                    <span class="material-symbols-outlined text-[14px]" data-icon="open_in_new">open_in_new</span>
+</a>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- ========================================== -->
+<!-- STICKY BOTTOM CONVERSATIONAL INPUT BAR -->
+<!-- ========================================== -->
+<div class="p-4 bg-surface-container-lowest/90 backdrop-blur-md border-t border-outline-variant/20 shrink-0">
+<div class="max-w-5xl mx-auto space-y-2.5">
+<!-- Quick Prompt Suggestion Pills -->
+<div class="flex items-center gap-2 overflow-x-auto pb-1 text-code-sm font-code-sm no-scrollbar">
+<span class="text-outline text-xs flex items-center gap-1 shrink-0">
+<span class="material-symbols-outlined text-[14px]" data-icon="bolt">bolt</span>
+                Quick:
+              </span>
+<button class="px-2.5 py-1 rounded-full bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-primary transition-all whitespace-nowrap active:scale-95">
+                Download all remaining papers
+              </button>
+<button class="px-2.5 py-1 rounded-full bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-primary transition-all whitespace-nowrap active:scale-95">
+                Find 5 more papers on quantization
+              </button>
+<button class="px-2.5 py-1 rounded-full bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-primary transition-all whitespace-nowrap active:scale-95">
+                Summarize key methodologies
+              </button>
+<button class="px-2.5 py-1 rounded-full bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-primary transition-all whitespace-nowrap active:scale-95">
+                Filter by code availability
+              </button>
+</div>
+<!-- Input Box Container -->
+<div class="relative bg-surface-container rounded-xl border border-outline-variant/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all p-2 flex flex-col gap-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-outline pl-1" data-icon="search_spark">search_spark</span>
+<input class="w-full bg-transparent border-0 text-on-surface placeholder:text-outline text-body-md focus:ring-0 p-0 focus:outline-none" placeholder="Ask for papers, request downloads (e.g. 'Download papers 2 and 6'), or explore concepts..." type="text">
+</div>
+<!-- Input Toolbar & Controls (Right controls cluster) -->
+<div class="flex items-center justify-between pt-1 border-t border-outline-variant/20 px-1">
+<!-- Left Source Badges -->
+<div class="flex items-center gap-2">
+<div class="relative inline-block text-left" id="sources-dropdown-container"><button class="flex items-center gap-1.5 text-code-sm font-code-sm text-on-surface-variant bg-surface-container-low hover:bg-surface-container px-2.5 py-1 rounded-lg border border-outline-variant/30 text-xs transition-colors shadow-sm" id="sources-menu-button" onclick="const menu = document.getElementById('sources-dropdown-menu'); const isHidden = menu.classList.contains('hidden'); menu.classList.toggle('hidden', !isHidden ? true : false);" type="button"><span class="material-symbols-outlined text-[15px] text-primary" data-icon="database">database</span><span class="font-medium" id="sources-btn-label">Sources (3)</span><span class="material-symbols-outlined text-[14px] text-outline" data-icon="expand_more">expand_more</span></button><div class="hidden absolute bottom-full left-0 mb-2 w-64 rounded-xl bg-surface-container-high border border-outline-variant/40 shadow-xl p-2 z-30 flex flex-col gap-1" id="sources-dropdown-menu"><div class="flex items-center justify-between px-2 py-1 border-b border-outline-variant/20 mb-1"><span class="text-[11px] font-code-sm uppercase tracking-wider text-outline font-semibold">Select Academic Repos</span><span class="text-[10px] font-code-sm text-primary">6 Available</span></div><label class="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container cursor-pointer transition-colors text-xs"><div class="flex items-center gap-2"><input checked="" class="rounded bg-surface-container-highest border-outline-variant/40 text-primary focus:ring-0 w-3.5 h-3.5 source-checkbox" onchange="updateSourceCount()" type="checkbox"><span class="text-on-surface font-medium">ArXiv</span></div><span class="text-[10px] font-code-sm text-primary bg-primary/10 px-1.5 py-0.2 rounded border border-primary/20">cs.CL, cs.LG</span></label><label class="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container cursor-pointer transition-colors text-xs"><div class="flex items-center gap-2"><input checked="" class="rounded bg-surface-container-highest border-outline-variant/40 text-primary focus:ring-0 w-3.5 h-3.5 source-checkbox" onchange="updateSourceCount()" type="checkbox"><span class="text-on-surface font-medium">IEEE Xplore</span></div><span class="text-[10px] font-code-sm text-outline">Journals</span></label><label class="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container cursor-pointer transition-colors text-xs"><div class="flex items-center gap-2"><input checked="" class="rounded bg-surface-container-highest border-outline-variant/40 text-primary focus:ring-0 w-3.5 h-3.5 source-checkbox" onchange="updateSourceCount()" type="checkbox"><span class="text-on-surface font-medium">OpenReview</span></div><span class="text-[10px] font-code-sm text-tertiary bg-surface-container px-1.5 py-0.2 rounded border border-tertiary/20">Peer Rev</span></label><label class="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container cursor-pointer transition-colors text-xs"><div class="flex items-center gap-2"><input class="rounded bg-surface-container-highest border-outline-variant/40 text-primary focus:ring-0 w-3.5 h-3.5 source-checkbox" onchange="updateSourceCount()" type="checkbox"><span class="text-on-surface font-medium">Semantic Scholar</span></div><span class="text-[10px] font-code-sm text-outline">200M+</span></label><label class="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container cursor-pointer transition-colors text-xs"><div class="flex items-center gap-2"><input class="rounded bg-surface-container-highest border-outline-variant/40 text-primary focus:ring-0 w-3.5 h-3.5 source-checkbox" onchange="updateSourceCount()" type="checkbox"><span class="text-on-surface font-medium">PubMed</span></div><span class="text-[10px] font-code-sm text-outline">Biomed</span></label><label class="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container cursor-pointer transition-colors text-xs"><div class="flex items-center gap-2"><input class="rounded bg-surface-container-highest border-outline-variant/40 text-primary focus:ring-0 w-3.5 h-3.5 source-checkbox" onchange="updateSourceCount()" type="checkbox"><span class="text-on-surface font-medium">ACM Digital Library</span></div><span class="text-[10px] font-code-sm text-outline">Computing</span></label></div><script>function updateSourceCount() { const checked = document.querySelectorAll('.source-checkbox:checked').length; const label = document.getElementById('sources-btn-label'); if (label) { label.textContent = 'Sources (' + checked + ' selected)'; } } window.addEventListener('click', function(e) { const container = document.getElementById('sources-dropdown-container'); const menu = document.getElementById('sources-dropdown-menu'); if (container && menu && !container.contains(e.target)) { menu.classList.add('hidden'); } });</script></div>
+<!-- Count Slider / Tag -->
+<div class="relative inline-block text-left" id="limit-dropdown-container"><button type="button" id="limit-menu-button" onclick="const menu = document.getElementById('limit-dropdown-menu'); const isHidden = menu.classList.contains('hidden'); menu.classList.toggle('hidden', !isHidden ? true : false);" class="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-container-low hover:bg-surface-container border border-outline-variant/30 text-code-sm font-code-sm text-xs text-outline transition-colors shadow-sm cursor-pointer"><span class="">Limit:</span><span id="limit-btn-value" class="text-primary font-semibold">10 papers</span><span class="material-symbols-outlined text-[14px] text-outline" data-icon="expand_more">expand_more</span></button><div id="limit-dropdown-menu" class="hidden absolute bottom-full left-0 mb-2 w-56 rounded-xl bg-surface-container-high border border-outline-variant/40 shadow-2xl p-3 z-50 text-xs flex flex-col gap-2.5 backdrop-blur-md"><div class="flex items-center justify-between pb-1.5 border-b border-outline-variant/20"><span class="text-[11px] font-code-sm uppercase tracking-wider text-outline font-semibold">Max Paper Results</span><span class="text-[10px] font-code-sm text-primary">Presets</span></div><div class="grid grid-cols-3 gap-1.5"><button type="button" onclick="setPaperLimit(5)" class="px-2 py-1 rounded-lg bg-surface-container hover:bg-primary/20 hover:text-primary text-on-surface text-center font-code-sm text-xs transition-colors border border-outline-variant/20">5</button><button type="button" onclick="setPaperLimit(10)" class="px-2 py-1 rounded-lg bg-primary/20 text-primary font-semibold text-center font-code-sm text-xs transition-colors border border-primary/30">10</button><button type="button" onclick="setPaperLimit(15)" class="px-2 py-1 rounded-lg bg-surface-container hover:bg-primary/20 hover:text-primary text-on-surface text-center font-code-sm text-xs transition-colors border border-outline-variant/20">15</button><button type="button" onclick="setPaperLimit(20)" class="px-2 py-1 rounded-lg bg-surface-container hover:bg-primary/20 hover:text-primary text-on-surface text-center font-code-sm text-xs transition-colors border border-outline-variant/20">20</button><button type="button" onclick="setPaperLimit(25)" class="px-2 py-1 rounded-lg bg-surface-container hover:bg-primary/20 hover:text-primary text-on-surface text-center font-code-sm text-xs transition-colors border border-outline-variant/20">25</button><button type="button" onclick="setPaperLimit(50)" class="px-2 py-1 rounded-lg bg-surface-container hover:bg-primary/20 hover:text-primary text-on-surface text-center font-code-sm text-xs transition-colors border border-outline-variant/20">50</button></div><div class="pt-1.5 border-t border-outline-variant/20 flex flex-col gap-1.5"><label for="custom-limit-input" class="text-[10px] font-code-sm text-outline uppercase tracking-wider">Custom Limit</label><div class="flex items-center gap-1.5"><input id="custom-limit-input" type="number" min="1" max="100" placeholder="1-100" value="10" class="w-full bg-surface-container-lowest/80 border border-outline-variant/30 rounded-lg px-2 py-1 text-code-sm font-code-sm text-on-surface placeholder:text-outline/70 focus:outline-none focus:border-primary text-xs" onkeydown="if(event.key === 'Enter'){ applyCustomLimit(); event.preventDefault(); }"><button type="button" onclick="applyCustomLimit()" class="px-2.5 py-1 rounded-lg bg-primary hover:bg-primary-fixed-dim text-on-primary font-medium text-xs font-label-md transition-all active:scale-95 shadow-sm shrink-0">Apply</button></div></div></div><script>function setPaperLimit(n) { const val = parseInt(n, 10); if (isNaN(val) || val < 1) return; const label = document.getElementById('limit-btn-value'); if (label) { label.textContent = val + (val === 1 ? ' paper' : ' papers'); } const customInput = document.getElementById('custom-limit-input'); if (customInput) { customInput.value = val; } const menu = document.getElementById('limit-dropdown-menu'); if (menu) { menu.classList.add('hidden'); } } function applyCustomLimit() { const input = document.getElementById('custom-limit-input'); if (!input) return; const val = parseInt(input.value, 10); if (isNaN(val) || val < 1) return; setPaperLimit(val); } window.addEventListener('click', function(e) { const container = document.getElementById('limit-dropdown-container'); const menu = document.getElementById('limit-dropdown-menu'); if (container && menu && !container.contains(e.target)) { menu.classList.add('hidden'); } });</script></div>
+</div>
+<!-- Right Action Buttons -->
+<div class="flex items-center gap-2">
+<button class="p-1.5 text-outline hover:text-on-surface rounded hover:bg-surface-container-high transition-colors" title="Attach Paper or BibTeX">
+<span class="material-symbols-outlined text-[20px]" data-icon="attach_file">attach_file</span>
+</button>
+<button class="px-4 py-1.5 rounded-lg bg-primary text-on-primary font-medium text-label-md font-label-md hover:bg-primary-fixed-dim transition-all flex items-center gap-1.5 active:scale-95 shadow-sm">
+<span class="">Send</span>
+<span class="material-symbols-outlined text-[16px]" data-icon="send">send</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Footer Compliance Microcopy -->
+<div class="flex items-center justify-between text-[11px] font-code-sm text-outline px-1">
+<span class="">AuraSync v4.2 Semantic Engine • Zero Hallucination Retrieval Grounded in OpenAccess Datasets</span>
+<span class="">Context: 12.4k / 32k tokens used</span>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+<!-- ========================================== -->
+<!-- RENAME CHAT TITLE MODAL DIALOG -->
+<!-- ========================================== -->
+<div class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md transition-opacity duration-200" id="rename-modal">
+<div class="w-full max-w-md rounded-2xl bg-surface-container-low border border-outline-variant/40 shadow-2xl p-6 flex flex-col gap-5 transform transition-transform duration-200 scale-95" id="rename-modal-container">
+<!-- Header -->
+<div class="flex items-center justify-between pb-3 border-b border-outline-variant/20">
+<div class="flex items-center gap-2.5">
+<div class="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[20px]" data-icon="edit">edit</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-base font-semibold text-on-surface">Rename Conversation</h3>
+</div>
+<button class="p-1 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container-high transition-colors" onclick="closeRenameModal()">
+<span class="material-symbols-outlined text-[20px]" data-icon="close">close</span>
+</button>
+</div>
+<!-- Form Content -->
+<div class="flex flex-col gap-3">
+<label class="text-label-md font-label-md text-on-surface-variant font-medium text-xs flex justify-between items-center" for="chat-title-input">
+<span class="">Chat Conversation Title</span>
+<span class="text-outline text-[11px]" id="char-count">34/80</span>
+</label>
+<div class="relative">
+<input class="w-full bg-surface-container border border-outline-variant/40 focus:border-primary focus:ring-1 focus:ring-primary rounded-xl px-3.5 py-2.5 text-body-md font-body-md text-on-surface placeholder:text-outline text-sm transition-all shadow-inner" id="chat-title-input" maxlength="80" oninput="updateCharCount(this.value)" placeholder="Enter conversation title..." type="text">
+</div>
+<p class="text-code-sm font-code-sm text-outline text-[11px]">
+Renaming updates your research workspace session label and semantic index.
+</p>
+</div>
+<!-- Action Buttons -->
+<div class="flex items-center justify-end gap-3 pt-2">
+<button class="px-4 py-2 rounded-lg border border-outline-variant/30 text-label-md font-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all active:scale-95 text-xs font-medium" onclick="closeRenameModal()" type="button">
+Cancel
+</button>
+<button class="px-4 py-2 rounded-lg bg-primary hover:bg-primary-fixed-dim text-on-primary text-label-md font-label-md font-medium transition-all shadow-sm active:scale-95 text-xs flex items-center gap-1.5" onclick="saveChatTitle()" type="button">
+<span class="material-symbols-outlined text-[16px]" data-icon="check">check</span>
+<span class="">Save Changes</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Scripts for Drawer Toggle & Rename Modal -->
+<script>
+  // Collapsible Chat History Drawer logic
+  let isHistoryCollapsed = false;
+
+  function toggleChatHistory(expand) {
+    const sidebar = document.getElementById('chat-history-sidebar');
+    const expandTab = document.getElementById('expand-history-tab');
+    
+    if (expand) {
+      // Expand drawer
+      sidebar.classList.remove('!w-0', '!p-0', '!border-r-0', 'pointer-events-none');
+      sidebar.classList.add('w-[240px]');
+      expandTab.classList.add('hidden');
+      isHistoryCollapsed = false;
+    } else {
+      // Collapse drawer
+      sidebar.classList.remove('w-[240px]');
+      sidebar.classList.add('!w-0', '!p-0', '!border-r-0', 'pointer-events-none');
+      expandTab.classList.remove('hidden');
+      isHistoryCollapsed = true;
+    }
+  }
+
+  // Rename Conversation Modal logic
+  let targetTitleElementId = null;
+
+  function openRenameModal(titleElementId, sessionCardId) {
+    targetTitleElementId = titleElementId;
+    const modal = document.getElementById('rename-modal');
+    const modalContainer = document.getElementById('rename-modal-container');
+    const input = document.getElementById('chat-title-input');
+    const titleEl = document.getElementById(titleElementId);
+
+    const currentTitle = titleEl ? titleEl.textContent.trim() : 'Sparse Attention & Entropy Decay';
+    input.value = currentTitle;
+    updateCharCount(currentTitle);
+
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+      modalContainer.classList.remove('scale-95');
+      modalContainer.classList.add('scale-100');
+      input.focus();
+      input.select();
+    }, 10);
+  }
+
+  function closeRenameModal() {
+    const modal = document.getElementById('rename-modal');
+    const modalContainer = document.getElementById('rename-modal-container');
+    modalContainer.classList.remove('scale-100');
+    modalContainer.classList.add('scale-95');
+    setTimeout(() => {
+      modal.classList.add('hidden');
+      targetTitleElementId = null;
+    }, 150);
+  }
+
+  function updateCharCount(val) {
+    const counter = document.getElementById('char-count');
+    if (counter) {
+      counter.textContent = `${val.length}/80`;
+    }
+  }
+
+  function saveChatTitle() {
+    const input = document.getElementById('chat-title-input');
+    const newTitle = input.value.trim();
+    if (!newTitle) return;
+
+    if (targetTitleElementId) {
+      const titleEl = document.getElementById(targetTitleElementId);
+      if (titleEl) {
+        titleEl.textContent = newTitle;
+      }
+      // If updating the active session (#1), also update header
+      if (targetTitleElementId === 'session-title-1') {
+        const headerTitle = document.getElementById('active-chat-header-title');
+        if (headerTitle) {
+          headerTitle.textContent = newTitle;
+        }
+      }
+    }
+    closeRenameModal();
+  }
+
+  // Close modal when clicking backdrop
+  document.getElementById('rename-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+      closeRenameModal();
+    }
+  });
+
+  // Enter key in input saves title, Escape closes modal
+  document.getElementById('chat-title-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveChatTitle();
+    } else if (e.key === 'Escape') {
+      closeRenameModal();
+    }
+  });
+</script>
+
+
+</body></html>
