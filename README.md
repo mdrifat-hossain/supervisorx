@@ -1,5 +1,19 @@
 # AI-Powered Research Assistant
 
+## Authentication setup
+
+Authentication runs in the Next.js frontend with Better Auth and the PostgreSQL database from Docker Compose. User, session, OAuth account, and username records are stored in PostgreSQL; Better Auth is a self-hosted library and does not automatically provide a hosted user analytics dashboard.
+
+1. Copy `.env.example` to `.env` if you do not already have a local environment file. Keep `.env` private.
+2. Set `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` to match the PostgreSQL instance. Set `BETTER_AUTH_SECRET` to a random secret with at least 32 characters and `BETTER_AUTH_URL` to the public base URL of the app.
+3. In Google Cloud Console create an OAuth web client and add `http://localhost:3000/api/auth/callback/google` as an authorized redirect URI. Put its client ID and secret in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+4. In GitHub Developer settings create an OAuth App and set its callback URL to `http://localhost:3000/api/auth/callback/github`. Put its client ID and secret in `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. For production, register the matching callbacks under your deployed domain and set `BETTER_AUTH_URL` to that domain.
+5. Start the services with `docker compose up --build -d`, then create Better Auth's core and username plugin tables with `docker compose exec frontend npm run auth:migrate`. The migration uses the frontend's `DATABASE_URL`, which points at the Compose PostgreSQL service.
+
+The registration form creates email/password accounts with a unique username. Users can sign in using either email or username. Google and GitHub sign-in are enabled when their matching credentials are present. Successful sign-in and registration open `/minimal-dashboard`; the dashboard routes check the Better Auth session on the server.
+
+To see registrations, query the `user` table in the `supervisorx` database (for example, `SELECT count(*) FROM "user";`). Better Auth does not currently sync app users to the Better Auth account website by default; its optional hosted infrastructure dashboard is a separate product/integration.
+
 An AI-powered research assistant that helps students, researchers, and academics discover, analyze, understand, compare, and summarize academic research papers. The system is designed to ground answers in retrieved source documents and provide citations so users can verify claims against the original papers.
 
 ## Table of Contents
