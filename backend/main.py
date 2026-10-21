@@ -12,6 +12,8 @@ from arxiv_service import (
     DEFAULT_DOWNLOAD_DIR,
 )
 
+from services.llm import generate_academic_query
+
 app = FastAPI(
     title="ResearchPilot API",
     description="Backend AI API for ResearchPilot & SupervisorX",
@@ -32,6 +34,14 @@ class DownloadPaperRequest(BaseModel):
     projectId: Optional[str] = None
 
 
+class SearchRequest(BaseModel):
+    query: str
+    limit: Optional[int] = 10
+    start_year: Optional[int] = None
+    end_year: Optional[int] = None
+    api_key: Optional[str] = None
+
+
 @app.get("/")
 def root():
     return {"message": "ResearchPilot API is running", "service": "arXiv Academic Agent"}
@@ -48,23 +58,57 @@ def search_arxiv_papers(
     limit: int = Query(10, ge=1, le=50, description="Max papers to return"),
     start_year: Optional[int] = Query(None, description="Start year filter"),
     end_year: Optional[int] = Query(None, description="End year filter"),
+    api_key: Optional[str] = Query(None, description="Optional OpenRouter API key"),
 ):
-    """Search arXiv preprints matching the prompt and year bounds."""
+    """Search arXiv preprints matching the formulated academic query and year bounds."""
     try:
+        # Step 1: Query Formulation via OpenRouter (nvidia/nemotron-3.5-lightning:free)
+        formulated_query = generate_academic_query(query, api_key=api_key)
+
+        # Step 2: Search arXiv with rate-limiting
         papers = search_papers(
-            query=query,
+            query=formulated_query,
             max_results=limit,
             start_year=start_year,
             end_year=end_year,
         )
         return {
             "success": True,
-            "query": query,
+            "raw_query": query,
+            "formulated_query": formulated_query,
             "count": len(papers),
             "papers": papers,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/search")
+def search_endpoint(req: SearchRequest):
+    """
+    Search endpoint as specified in SupervisorX specification:
+    1. Formulates query via OpenRouter Query Formulation Model.
+    2. Queries arXiv with safe rate limits.
+    3. Returns structured paper cards.
+    """
+    try:
+        formulated_query = generate_academic_query(req.query, api_key=req.api_key)
+        papers = search_papers(
+            query=formulated_query,
+            max_results=req.limit or 10,
+            start_year=req.start_year,
+            end_year=req.end_year,
+        )
+        return {
+            "success": True,
+            "raw_query": req.query,
+            "formulated_query": formulated_query,
+            "count": len(papers),
+            "papers": papers,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.post("/api/papers/download")
