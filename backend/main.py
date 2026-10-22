@@ -10,6 +10,7 @@ from arxiv_service import (
     list_downloaded_paper_ids,
     is_paper_downloaded,
     DEFAULT_DOWNLOAD_DIR,
+    iterative_search_and_screen,
 )
 
 from services.llm import generate_academic_query
@@ -32,6 +33,8 @@ app.add_middleware(
 class DownloadPaperRequest(BaseModel):
     paper_id: str
     projectId: Optional[str] = None
+    pdf_url: Optional[str] = None
+    title: Optional[str] = None
 
 
 class SearchRequest(BaseModel):
@@ -39,6 +42,7 @@ class SearchRequest(BaseModel):
     limit: Optional[int] = 10
     start_year: Optional[int] = None
     end_year: Optional[int] = None
+    min_score: Optional[int] = 7
     api_key: Optional[str] = None
 
 
@@ -58,27 +62,22 @@ def search_arxiv_papers(
     limit: int = Query(10, ge=1, le=50, description="Max papers to return"),
     start_year: Optional[int] = Query(None, description="Start year filter"),
     end_year: Optional[int] = Query(None, description="End year filter"),
+    min_score: int = Query(7, ge=1, le=10, description="Minimum relevance threshold (1-10)"),
     api_key: Optional[str] = Query(None, description="Optional OpenRouter API key"),
 ):
-    """Search arXiv preprints matching the formulated academic query and year bounds."""
+    """
+    Search arXiv preprints and iteratively screen abstracts using OpenRouter LLM
+    against the user's research objective. Returns only papers meeting the relevance threshold.
+    """
     try:
-        # Step 1: Query Formulation via OpenRouter (nvidia/nemotron-3.5-lightning:free)
-        formulated_query = generate_academic_query(query, api_key=api_key)
-
-        # Step 2: Search arXiv with rate-limiting
-        papers = search_papers(
-            query=formulated_query,
-            max_results=limit,
+        return iterative_search_and_screen(
+            research_objective=query,
+            target_count=limit,
             start_year=start_year,
             end_year=end_year,
+            min_score=min_score,
+            api_key=api_key,
         )
-        return {
-            "success": True,
-            "raw_query": query,
-            "formulated_query": formulated_query,
-            "count": len(papers),
-            "papers": papers,
-        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -86,26 +85,22 @@ def search_arxiv_papers(
 @app.post("/api/search")
 def search_endpoint(req: SearchRequest):
     """
-    Search endpoint as specified in SupervisorX specification:
-    1. Formulates query via OpenRouter Query Formulation Model.
-    2. Queries arXiv with safe rate limits.
-    3. Returns structured paper cards.
+    Unified research discovery endpoint:
+    1. Understands user research objective and generates targeted queries.
+    2. Fetches candidate batches from arXiv.
+    3. Screens titles and abstracts using OpenRouter LLM against relevance criteria.
+    4. Iterates until target count is reached or candidate budget exhausted.
+    5. Returns transparent relevance scores and explanations for every paper.
     """
     try:
-        formulated_query = generate_academic_query(req.query, api_key=req.api_key)
-        papers = search_papers(
-            query=formulated_query,
-            max_results=req.limit or 10,
+        return iterative_search_and_screen(
+            research_objective=req.query,
+            target_count=req.limit or 10,
             start_year=req.start_year,
             end_year=req.end_year,
+            min_score=req.min_score or 7,
+            api_key=req.api_key,
         )
-        return {
-            "success": True,
-            "raw_query": req.query,
-            "formulated_query": formulated_query,
-            "count": len(papers),
-            "papers": papers,
-        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -118,7 +113,11 @@ def download_arxiv_paper(req: DownloadPaperRequest):
         if not req.paper_id or not req.paper_id.strip():
             raise HTTPException(status_code=400, detail="Paper ID is required")
 
-        filepath = download_paper(req.paper_id.strip())
+        filepath = download_paper(
+            paper_id=req.paper_id.strip(),
+            pdf_url=req.pdf_url,
+            title=req.title,
+        )
         filename = os.path.basename(filepath)
         file_size = os.path.getsize(filepath)
 

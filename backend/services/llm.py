@@ -9,54 +9,52 @@ logger = logging.getLogger("llm_service")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 QUERY_FORMULATION_MODELS = [
-    "nvidia/nemotron-3.5-lightning:free",
-    "google/gemma-4-26b-a4b-it:free",
-    "minimax/minimax-m3.1-flash:free"
+    "minimax/minimax-m3.1-flash:free",
+    "liquid/lfm-2.5-2.6b:free",
+    "nvidia/nemotron-3.5-lightning:free"
 ]
 
 TEXT_MODELS = [
-    "nvidia/nemotron-3.5-lightning:free",
-    "google/gemma-4-26b-a4b-it:free",
-    "minimax/minimax-m3.1-flash:free"
+    "minimax/minimax-m3.1-flash:free",
+    "liquid/lfm-2.5-2.6b:free",
+    "nvidia/nemotron-3.5-lightning:free"
 ]
 
 VISION_MODELS = [
     "nvidia/nemotron-3.5-super-vl:free",
-    "google/gemma-4-26b-a4b-it:free"
+    "minimax/minimax-m3.1-flash:free"
 ]
 
 
 def _clean_fallback_query(user_prompt: str) -> str:
-    """Algorithmic heuristic fallback to extract core academic terms."""
-    # Strip leading conversational requests
+    """Algorithmic heuristic fallback to extract core academic terms from natural language prompts."""
+    cleaned = user_prompt.strip()
+
+    # Strip conversational prefixes like "find around 5 papers about", "search for 10 top papers on"
     cleaned = re.sub(
-        r"^(?:please\s+)?(?:can\s+you\s+)?(?:find|search|show|get|fetch|bring|look\s+for|give\s+me)\s+",
-        "",
-        user_prompt,
-        flags=re.IGNORECASE
-    )
-    # Strip quantity / limits
-    cleaned = re.sub(
-        r"^(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty)\s+",
+        r"^(?:please\s+)?(?:can\s+you\s+)?(?:find|search|show|get|fetch|bring|look\s+for|give\s+me)\s+(?:around|about|approx|approximately|top)?\s*\d*\s*(?:recent|new|peer-reviewed|top|more|latest|open-access)?\s*(?:papers?|articles?|literature|studies)?\s*(?:about|on|for|regarding|topic:?)?\s*",
         "",
         cleaned,
         flags=re.IGNORECASE
     )
-    # Strip repeated adjective qualifiers like "recent", "peer-reviewed", "top", "more", "latest"
+
+    # Strip repeated conversational follow-up sentences like ". find top papers that relevant this this topic."
     cleaned = re.sub(
-        r"^(?:(?:recent|new|peer-reviewed|top|more|latest|open-access)\s+)+",
+        r"\.?\s*(?:find|search|give\s+me|get)\s+(?:top|relevant|recent|more)?\s*papers?.*$",
         "",
         cleaned,
         flags=re.IGNORECASE
     )
-    # Strip noun phrases like "papers on", "preprints about", "articles for"
+
+    # Strip trailing "topic", "topic."
     cleaned = re.sub(
-        r"^(?:papers?|preprints?|articles?|literature)\s+(?:on|about|for|regarding)\s+",
+        r"\s+topic\.?$",
         "",
         cleaned,
         flags=re.IGNORECASE
     )
-    # Strip trailing code/benchmarks/dataset
+
+    # Strip trailing constraints like "with code", "from 2023 to 2026"
     cleaned = re.sub(
         r"\s+(?:with\s+benchmarking\s+code|with\s+code|with\s+dataset|from\s+20\d\d\s*(?:-|to)\s*20\d\d).*$",
         "",
@@ -64,10 +62,16 @@ def _clean_fallback_query(user_prompt: str) -> str:
         flags=re.IGNORECASE
     ).strip()
 
+    # If prompt was stripped too short, fallback to removing common conversational stop words
     if not cleaned or len(cleaned) < 3:
-        cleaned = user_prompt.strip()
+        stop_words = {
+            "find", "papers", "paper", "about", "around", "top", "relevant", "topic",
+            "show", "give", "please", "recent", "that", "this", "for", "with"
+        }
+        words = [w for w in re.findall(r"\b[a-zA-Z0-9\-]+\b", user_prompt) if w.lower() not in stop_words]
+        cleaned = " ".join(words)
 
-    return cleaned
+    return cleaned or user_prompt.strip()
 
 
 def generate_academic_query(user_prompt: str, api_key: Optional[str] = None) -> str:
