@@ -16,7 +16,12 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL: ${SUPABASE_DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_DB_POOLER_HOST: ${SUPABASE_DB_POOLER_HOST:-aws-0-ap-southeast-2.pooler.supabase.com}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-research-papers}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
@@ -28,9 +33,13 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
-      - ./storage:/storage
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL: ${SUPABASE_DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_DB_POOLER_HOST: ${SUPABASE_DB_POOLER_HOST:-aws-0-ap-southeast-2.pooler.supabase.com}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-research-papers}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     depends_on:
       db:

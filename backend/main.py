@@ -1,6 +1,12 @@
 import os
+import hmac
+import shutil
+import tempfile
+from urllib.parse import quote, urlsplit, urlunsplit
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -35,6 +41,45 @@ class DownloadPaperRequest(BaseModel):
     projectId: Optional[str] = None
     pdf_url: Optional[str] = None
     title: Optional[str] = None
+
+
+def _pooler_database_url() -> str:
+    value = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL")
+    if not value:
+        raise HTTPException(status_code=503, detail="Database is not configured")
+    parsed = urlsplit(value)
+    pooler = os.getenv("SUPABASE_DB_POOLER_HOST")
+    if pooler and parsed.hostname and parsed.hostname.startswith("db.") and parsed.hostname.endswith(".supabase.co"):
+        project_ref = (urlsplit(os.getenv("SUPABASE_URL", "")).hostname or "").split(".")[0]
+        if not project_ref:
+            raise HTTPException(status_code=503, detail="Supabase project URL is not configured")
+        password = quote(parsed.password or "", safe="")
+        netloc = f"postgres.{project_ref}:{password}@{pooler}:5432"
+        return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+    return value
+
+
+def _require_project_access(user_id: Optional[str], api_key: Optional[str], project_id: Optional[str]) -> None:
+    expected_key = os.getenv("INTERNAL_API_KEY", "")
+    if not expected_key or not api_key or not hmac.compare_digest(api_key, expected_key):
+        raise HTTPException(status_code=401, detail="Unauthorized service request")
+    if not user_id or not project_id:
+        raise HTTPException(status_code=401, detail="Authenticated project context is required")
+    try:
+        import psycopg
+
+        with psycopg.connect(_pooler_database_url(), connect_timeout=10) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT 1 FROM projects WHERE id = %s AND owner_user_id = %s LIMIT 1",
+                    (project_id, user_id),
+                )
+                if cursor.fetchone() is None:
+                    raise HTTPException(status_code=403, detail="Project access denied")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="Could not verify project access")
 
 
 class SearchRequest(BaseModel):
@@ -107,31 +152,46 @@ def search_endpoint(req: SearchRequest):
 
 
 @app.post("/api/papers/download")
-def download_arxiv_paper(req: DownloadPaperRequest):
-    """Download paper PDF into the project common storage directory."""
+def download_arxiv_paper(
+    req: DownloadPaperRequest,
+    x_internal_api_key: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Download a PDF to a temporary transfer directory for Supabase upload."""
+    transfer_dir = None
     try:
+        _require_project_access(x_user_id, x_internal_api_key, req.projectId)
         if not req.paper_id or not req.paper_id.strip():
             raise HTTPException(status_code=400, detail="Paper ID is required")
 
+        transfer_dir = tempfile.mkdtemp(prefix="researchpilot-paper-")
         filepath = download_paper(
             paper_id=req.paper_id.strip(),
+            download_dir=transfer_dir,
             pdf_url=req.pdf_url,
             title=req.title,
         )
         filename = os.path.basename(filepath)
         file_size = os.path.getsize(filepath)
 
-        return {
-            "success": True,
-            "paper_id": req.paper_id,
-            "filename": filename,
-            "filepath": filepath,
-            "file_size": file_size,
-            "message": "Paper downloaded successfully to project storage.",
-        }
+        return FileResponse(
+            filepath,
+            media_type="application/pdf",
+            filename=filename,
+            headers={"X-Paper-Id": req.paper_id, "X-File-Size": str(file_size)},
+            background=BackgroundTask(shutil.rmtree, transfer_dir, ignore_errors=True),
+        )
+    except HTTPException:
+        if transfer_dir:
+            shutil.rmtree(transfer_dir, ignore_errors=True)
+        raise
     except ValueError as ve:
+        if transfer_dir:
+            shutil.rmtree(transfer_dir, ignore_errors=True)
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
+        if transfer_dir:
+            shutil.rmtree(transfer_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Failed to download paper: {e}")
 
 

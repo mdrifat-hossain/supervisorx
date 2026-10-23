@@ -1,0 +1,2129 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import ProjectSidebar from "@/components/common/ProjectSidebar";
+
+interface Session {
+  id: string;
+  title: string;
+  paperCount: number;
+  timeLabel: string;
+  isActive: boolean;
+}
+
+interface PaperItem {
+  id: number;
+  paperId?: string;
+  title: string;
+  venue: string;
+  venueType: "arxiv" | "conference" | "journal";
+  authors: string;
+  tag?: string;
+  snippet: string;
+  status: "downloaded" | "available" | "downloading" | "failed";
+  progress?: number;
+  pdfUrl?: string;
+  entryUrl?: string;
+  published?: string;
+  year?: number;
+  relevanceScore?: number;
+  relevanceReason?: string;
+  matchedCriteria?: string[];
+}
+
+const INITIAL_SESSIONS: Session[] = [
+  {
+    id: "session-1",
+    title: "Sparse Attention & Entropy Decay",
+    paperCount: 12,
+    timeLabel: "Active",
+    isActive: true,
+  },
+  {
+    id: "session-2",
+    title: "Transformer Quantization Latency",
+    paperCount: 8,
+    timeLabel: "3 days ago",
+    isActive: false,
+  },
+  {
+    id: "session-3",
+    title: "Cross-Species Gene Transformer Benchmarks",
+    paperCount: 15,
+    timeLabel: "Oct 18",
+    isActive: false,
+  },
+  {
+    id: "session-4",
+    title: "Shadow Gradient Vanishing in LayerNorm",
+    paperCount: 6,
+    timeLabel: "Oct 12",
+    isActive: false,
+  },
+];
+
+const INITIAL_PAPERS: PaperItem[] = [
+  {
+    id: 1,
+    paperId: "2403.1192",
+    title: "Entropy-Constrained Sparse Attention in 70B Parameter LLMs",
+    venue: "ArXiv:2403.1192",
+    venueType: "arxiv",
+    authors: "Vaswani et al., 2024",
+    tag: "PyTorch Code Included",
+    snippet:
+      '"We demonstrate an analytical bound on entropy collapse during multi-head pruning across 70B checkpoints..."',
+    status: "downloaded",
+    pdfUrl: "https://arxiv.org/pdf/2403.1192.pdf",
+    entryUrl: "https://arxiv.org/abs/2403.1192",
+  },
+  {
+    id: 2,
+    paperId: "2401.08828",
+    title: "Dynamic Routing of Attention Heads via Top-k Gumbel Softmax",
+    venue: "ICLR 2024",
+    venueType: "conference",
+    authors: "Zhang, Lin, Bengio, 2024 • Citation Count: 48",
+    snippet:
+      '"Proposes dynamic routing to mitigate representational collapse and gradient starvation during sparse passes..."',
+    status: "available",
+    pdfUrl: "https://arxiv.org/pdf/2401.08828.pdf",
+    entryUrl: "https://arxiv.org/abs/2401.08828",
+  },
+  {
+    id: 3,
+    paperId: "2309.17453",
+    title: "Gradient Starvation and Latent Space Degeneracy in Deep Transformers",
+    venue: "NeurIPS 2023",
+    venueType: "conference",
+    authors: "Chen & Thorne, 2023 • Benchmark Repo: github.com/deep-trans/grad-starv",
+    snippet:
+      '"Investigating singular value decomposition of attention weights across layers 12-24 under extreme sparsification..."',
+    status: "available",
+    pdfUrl: "https://arxiv.org/pdf/2309.17453.pdf",
+    entryUrl: "https://arxiv.org/abs/2309.17453",
+  },
+  {
+    id: 4,
+    paperId: "2401.0882",
+    title: "Sparse Sinkhorn Attention: Preserving Mutual Information",
+    venue: "ArXiv:2401.0882",
+    venueType: "arxiv",
+    authors: "Al-Mansoor et al., 2024 • Optimal Transport Solvers",
+    snippet:
+      '"Utilizing entropic regularized Sinkhorn iterations to enforce maximal row-wise entropy distributions..."',
+    status: "downloading",
+    progress: 72,
+    pdfUrl: "https://arxiv.org/pdf/2401.0882.pdf",
+    entryUrl: "https://arxiv.org/abs/2401.0882",
+  },
+  {
+    id: 5,
+    paperId: "2305.18290",
+    title: "Empirical Study of LayerNorm Entropy Trajectories",
+    venue: "ICML",
+    venueType: "arxiv",
+    authors: "Dupont & Klein, 2023 • Gateway Timeout (504) on Institutional Host",
+    snippet:
+      '"Measuring entropy fluctuations post RMSNorm versus classical LayerNorm under zero-shot validation..."',
+    status: "failed",
+    pdfUrl: "https://arxiv.org/pdf/2305.18290.pdf",
+    entryUrl: "https://arxiv.org/abs/2305.18290",
+  },
+  {
+    id: 6,
+    paperId: "2309.17453",
+    title: "Attention Sink Phenomena in Quantized Language Models",
+    venue: "ArXiv:2309.17453",
+    venueType: "arxiv",
+    authors: "Xiao, Tian et al., 2024 • Code: streaming-llm",
+    snippet:
+      '"Preserving initial token attention values restores massive loss spikes in 4-bit and 8-bit sparse quantization."',
+    status: "available",
+    pdfUrl: "https://arxiv.org/pdf/2309.17453.pdf",
+    entryUrl: "https://arxiv.org/abs/2309.17453",
+  },
+  {
+    id: 7,
+    paperId: "2402.0451",
+    title: "Orthogonal Attention Projection for Long-Context Fidelity",
+    venue: "ACL 2024",
+    venueType: "conference",
+    authors: "R. Patel, K. Murthy, 2024 • Context Window: 128k",
+    snippet:
+      '"Orthogonality constraints prevent attention matrix rank collapse when context lengths surpass 64k tokens."',
+    status: "available",
+    pdfUrl: "https://arxiv.org/pdf/2402.0451.pdf",
+    entryUrl: "https://arxiv.org/abs/2402.0451",
+  },
+  {
+    id: 8,
+    paperId: "2301.00774",
+    title: "Spectral Norm Regularization of Multi-Head Self-Attention",
+    venue: "JMLR 2023",
+    venueType: "journal",
+    authors: "Foster & Wu, 2023 • Theoretical Bounds",
+    snippet:
+      '"Proving Lipschitz continuity bounds on self-attention outputs under induced matrix spectral norm penalties..."',
+    status: "available",
+    pdfUrl: "https://arxiv.org/pdf/2301.00774.pdf",
+    entryUrl: "https://arxiv.org/abs/2301.00774",
+  },
+  {
+    id: 9,
+    paperId: "2402.01234",
+    title: "Cross-Layer Attention Redistribution under Extreme Sparsity",
+    venue: "EMNLP 2024",
+    venueType: "conference",
+    authors: "Morozov et al., 2024 • 90% Sparsity Regime",
+    snippet:
+      '"Re-allocating discarded head capacities to lower-order feature layers maintains benchmark perplexity."',
+    status: "available",
+    pdfUrl: "https://arxiv.org/pdf/2402.01234.pdf",
+    entryUrl: "https://arxiv.org/abs/2402.01234",
+  },
+  {
+    id: 10,
+    paperId: "2402.0451",
+    title: "Attention Head Redundancy and Pruning Dynamics",
+    venue: "ArXiv:2402.0451",
+    venueType: "arxiv",
+    authors: "S. Gupta et al., 2024 • Multi-GPU Pruning Tool",
+    snippet:
+      '"Analyzing the cosine similarity of head projection matrices to identify deterministic pruning candidates..."',
+    status: "available",
+    pdfUrl: "https://arxiv.org/pdf/2402.0451.pdf",
+    entryUrl: "https://arxiv.org/abs/2402.0451",
+  },
+];
+
+interface ChatMessage {
+  id: string;
+  sender: "user" | "ai";
+  text?: string;
+  time: string;
+  tag?: string;
+  isPapersResponse?: boolean;
+  papers?: PaperItem[];
+  introText?: string;
+  totalVerified?: number;
+  queuedInfo?: {
+    count: number;
+    total: number;
+    paperIds: number[];
+    titles?: string[];
+  };
+}
+
+export default function ProjectResearchChatbot({
+  projectId = "cognitive-mapper",
+  projectName: initialProjectName,
+}: {
+  projectId?: string;
+  projectName?: string;
+}) {
+  // Navigation active tab
+  const [activeTab] = useState<"dashboard" | "chatbot">("chatbot");
+
+  // History Drawer state
+  const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [sessionFilter, setSessionFilter] = useState("");
+  const [, setIsLoadingHistory] = useState(true);
+
+  // Rename modal state
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
+  const [renameInputTitle, setRenameInputTitle] = useState("");
+
+  // Source filters
+  const [isSourcesMenuOpen, setIsSourcesMenuOpen] = useState(false);
+  const [sources, setSources] = useState([
+    { name: "ArXiv", sub: "cs.CL, cs.LG", checked: true },
+    { name: "IEEE Xplore", sub: "Journals", checked: true },
+    { name: "OpenReview", sub: "Peer Rev", checked: true },
+    { name: "Semantic Scholar", sub: "200M+", checked: false },
+    { name: "PubMed", sub: "Biomed", checked: false },
+    { name: "ACM Digital Library", sub: "Computing", checked: false },
+  ]);
+
+  // Limits dropdown
+  const [isLimitMenuOpen, setIsLimitMenuOpen] = useState(false);
+  const [paperLimit, setPaperLimit] = useState(10);
+  const [customLimitInput, setCustomLimitInput] = useState("10");
+
+  // Year Range dropdown (Default: 2023 - 2026)
+  const [isYearMenuOpen, setIsYearMenuOpen] = useState(false);
+  const [startYear, setStartYear] = useState(2023);
+  const [endYear, setEndYear] = useState(2026);
+  const [startYearInput, setStartYearInput] = useState("2023");
+  const [endYearInput, setEndYearInput] = useState("2026");
+
+  // Papers state (empty by default for new projects; populated from active chat)
+  const [papers, setPapers] = useState<PaperItem[]>([]);
+  const [queuedCount, setQueuedCount] = useState(0);
+
+  // Messages state (empty by default for new projects; loaded from PostgreSQL)
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  // Input state
+  const [inputMessage, setInputMessage] = useState("");
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchStage, setSearchStage] = useState(0);
+
+  // Cycle through live progress stages every 2.8s while searching
+  useEffect(() => {
+    if (!isSearching) {
+      setSearchStage(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setSearchStage((prev) => (prev + 1) % 4);
+    }, 2800);
+    return () => clearInterval(interval);
+  }, [isSearching]);
+
+  const SEARCH_STAGES = [
+    {
+      title: "Formulating targeted academic search queries...",
+      subtitle: "Extracting core scientific problem statements, methods, and arXiv/OpenAlex query syntax.",
+      icon: "psychology",
+      badge: "Stage 1/4: Query Formulation",
+    },
+    {
+      title: "Retrieving candidate preprints from arXiv & OpenAlex...",
+      subtitle: "Querying research repositories across batches to collect candidate literature.",
+      icon: "manage_search",
+      badge: "Stage 2/4: Candidate Discovery",
+    },
+    {
+      title: "Reading & screening candidate abstracts with AI...",
+      subtitle: "Inspecting research questions, tasks, methodologies, and contributions in each abstract.",
+      icon: "auto_stories",
+      badge: "Stage 3/4: Abstract Screening",
+    },
+    {
+      title: "Scoring, filtering & ranking top relevant literature...",
+      subtitle: "Applying strict 1–10 relevance threshold, rejecting weak keyword overlaps, and compiling evidence.",
+      icon: "verified",
+      badge: "Stage 4/4: Relevance Ranking",
+    },
+  ];
+
+  const [projectName, setProjectName] = useState(
+    initialProjectName || (projectId === "cognitive-mapper" ? "Cognitive Mapper v4" : "Project Workspace")
+  );
+
+  // Active session title
+  const activeSession =
+    sessions.find((s) => s.id === activeSessionId) ||
+    sessions[0] || {
+      id: "new-inquiry",
+      title: activeSessionId ? "Active Research Inquiry" : `${projectName} Research Inquiry`,
+      paperCount: 0,
+      timeLabel: "Active",
+      isActive: true,
+    };
+
+  // Scroll to bottom ONLY when a new message is added, preventing forced downward scroll during paper downloads
+  const prevMessagesLength = useRef(messages.length);
+  useEffect(() => {
+    if (messages.length > prevMessagesLength.current) {
+      if (chatScrollRef.current) {
+        chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+      }
+    }
+    prevMessagesLength.current = messages.length;
+  }, [messages.length]);
+
+  // Handle source toggle
+  const toggleSource = (index: number) => {
+    setSources((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, checked: !s.checked } : s))
+    );
+  };
+  const activeSourcesCount = sources.filter((s) => s.checked).length;
+
+  // Load messages for a given session from PostgreSQL
+  const loadSessionMessages = async (
+    sessionId: string,
+    currentDownloaded: string[] = downloadedIds
+  ) => {
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/chat/messages?sessionId=${sessionId}`
+      );
+      const data = await res.json();
+      if (data.success && Array.isArray(data.messages)) {
+        // Sync paper download status with downloaded IDs
+        const syncedMessages = data.messages.map((m: ChatMessage) => {
+          if (!m.papers) return m;
+          return {
+            ...m,
+            papers: m.papers.map((p) => {
+              const cleanId = p.paperId ? p.paperId.split("v")[0] : "";
+              const isMatch =
+                (p.paperId && currentDownloaded.includes(p.paperId)) ||
+                (cleanId && currentDownloaded.some((d) => d.includes(cleanId)));
+              return isMatch ? { ...p, status: "downloaded" as const } : p;
+            }),
+          };
+        });
+
+        setMessages(syncedMessages);
+
+        // Extract latest papers from this session
+        const allPapers: PaperItem[] = [];
+        syncedMessages.forEach((m: ChatMessage) => {
+          if (m.papers && m.papers.length > 0) {
+            m.papers.forEach((p) => {
+              if (!allPapers.some((existing) => existing.paperId === p.paperId)) {
+                allPapers.push(p);
+              }
+            });
+          }
+        });
+        setPapers(allPapers);
+      }
+    } catch (err) {
+      console.error("Failed to load session messages from DB:", err);
+    }
+  };
+
+  // Fetch project details, downloaded paper IDs, and chat sessions from PostgreSQL
+  useEffect(() => {
+    let active = true;
+
+    async function initChatbot() {
+      setIsLoadingHistory(true);
+
+      // 1. Fetch project title
+      fetch(`/api/projects/${projectId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.project?.title && active) {
+            setProjectName(data.project.title);
+          }
+        })
+        .catch(() => {});
+
+      // 2. Fetch downloaded papers list from backend
+      let currentDownloaded: string[] = [];
+      try {
+        const dlRes = await fetch(`/api/projects/${projectId}/papers/downloaded`);
+        const dlData = await dlRes.json();
+        if (dlData?.downloaded_ids && Array.isArray(dlData.downloaded_ids)) {
+          currentDownloaded = dlData.downloaded_ids;
+          if (active) {
+            setDownloadedIds(currentDownloaded);
+            setQueuedCount(currentDownloaded.length);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading downloaded papers:", err);
+      }
+
+      // 3. Fetch chat sessions from PostgreSQL
+      try {
+        const sRes = await fetch(`/api/projects/${projectId}/chat/sessions`);
+        const sData = await sRes.json();
+        if (active) {
+          if (sData.success && Array.isArray(sData.sessions) && sData.sessions.length > 0) {
+            const loadedSessions: Session[] = sData.sessions.map((s: any, idx: number) => ({
+              id: s.id,
+              title: s.title,
+              paperCount: s.paperCount || 0,
+              timeLabel: s.timeLabel || "Active",
+              isActive: idx === 0,
+            }));
+            setSessions(loadedSessions);
+            const firstId = loadedSessions[0].id;
+            setActiveSessionId(firstId);
+            await loadSessionMessages(firstId, currentDownloaded);
+          } else {
+            // New project with empty history!
+            setSessions([]);
+            setActiveSessionId(null);
+            setMessages([]);
+            setPapers([]);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading chat sessions:", err);
+      } finally {
+        if (active) setIsLoadingHistory(false);
+      }
+    }
+
+    initChatbot();
+
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+
+  // Handle switching active session
+  const handleSelectSession = (sessionId: string) => {
+    setActiveSessionId(sessionId);
+    setSessions((prev) =>
+      prev.map((s) => ({ ...s, isActive: s.id === sessionId }))
+    );
+    loadSessionMessages(sessionId);
+  };
+
+  // Handle Paper Download Click (streams through the API and persists in Supabase Storage)
+  const handleDownloadPaper = async (id: number, paperObj?: PaperItem) => {
+    const targetPaper = paperObj || papers.find((p) => p.id === id);
+    if (!targetPaper) return;
+
+    if (targetPaper.status === "downloaded") return;
+
+    const updatePaperStatus = (
+      status: "downloaded" | "available" | "downloading" | "failed",
+      progress?: number
+    ) => {
+      setPapers((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, status, progress } : p))
+      );
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (!m.papers) return m;
+          return {
+            ...m,
+            papers: m.papers.map((p) =>
+              p.id === id ? { ...p, status, progress } : p
+            ),
+          };
+        })
+      );
+    };
+
+    updatePaperStatus("downloading", 25);
+
+    let currentProgress = 25;
+    const progressInterval = setInterval(() => {
+      currentProgress = Math.min(currentProgress + 15, 88);
+      updatePaperStatus("downloading", currentProgress);
+    }, 350);
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}/papers/download`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paper_id: targetPaper.paperId || `paper-${id}`,
+          title: targetPaper.title,
+          pdf_url: targetPaper.pdfUrl,
+          entry_url: targetPaper.entryUrl,
+          authors: targetPaper.authors,
+          venue: targetPaper.venue,
+          year: targetPaper.year,
+          published: targetPaper.published,
+          summary: targetPaper.snippet,
+        }),
+      });
+
+      clearInterval(progressInterval);
+
+      if (res.ok) {
+        const data = await res.json();
+        const savedId = targetPaper.paperId || data.paper_id || `paper-${id}`;
+        updatePaperStatus("downloaded", 100);
+        setDownloadedIds((prev) => [...prev, savedId]);
+        setQueuedCount((c) => c + 1);
+
+        // Persist downloaded status to PostgreSQL database so it stays green on subsequent visits
+        fetch(`/api/projects/${projectId}/chat/messages`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paperId: targetPaper.paperId || savedId,
+            status: "downloaded",
+            progress: 100,
+          }),
+        }).catch((e) => console.error("Error saving paper status to DB:", e));
+      } else {
+        updatePaperStatus("failed");
+      }
+    } catch (err) {
+      clearInterval(progressInterval);
+      console.error("Paper download error:", err);
+      updatePaperStatus("failed");
+    }
+  };
+
+  // Handle Rename Modal
+  const openRenameModal = (sessionId: string) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    setTargetSessionId(sessionId);
+    setRenameInputTitle(session ? session.title : "");
+    setIsRenameModalOpen(true);
+  };
+
+  const saveRenamedTitle = async () => {
+    const trimmed = renameInputTitle.trim();
+    if (!trimmed || !targetSessionId) return;
+
+    setSessions((prev) =>
+      prev.map((s) => (s.id === targetSessionId ? { ...s, title: trimmed } : s))
+    );
+    setIsRenameModalOpen(false);
+
+    try {
+      await fetch(`/api/projects/${projectId}/chat/sessions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: targetSessionId, title: trimmed }),
+      });
+    } catch (err) {
+      console.error("Error updating session title in DB:", err);
+    }
+    setTargetSessionId(null);
+  };
+
+  // Create New Chat (clears chat area and creates clean session)
+  const handleNewChat = async () => {
+    const newId = `session-${Date.now()}`;
+    const newTitle = "New Research Inquiry";
+
+    try {
+      await fetch(`/api/projects/${projectId}/chat/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: newId, title: newTitle }),
+      });
+    } catch (err) {
+      console.error("Error creating session in DB:", err);
+    }
+
+    const newSession: Session = {
+      id: newId,
+      title: newTitle,
+      paperCount: 0,
+      timeLabel: "Just now",
+      isActive: true,
+    };
+
+    setSessions((prev) => [
+      newSession,
+      ...prev.map((s) => ({ ...s, isActive: false })),
+    ]);
+    setActiveSessionId(newId);
+    setMessages([]);
+    setPapers([]);
+  };
+
+  // Send message & AI Agent orchestration
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const text = inputMessage.trim();
+    if (!text || isSearching) return;
+
+    // Ensure an active session exists in PostgreSQL
+    let currentSessionId = activeSessionId;
+    if (!currentSessionId) {
+      currentSessionId = `session-${Date.now()}`;
+      const initialTitle = text.length > 35 ? text.slice(0, 35) + "..." : text;
+      try {
+        await fetch(`/api/projects/${projectId}/chat/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: currentSessionId, title: initialTitle }),
+        });
+      } catch (err) {
+        console.error("Failed to create session on first message:", err);
+      }
+
+      const createdSession: Session = {
+        id: currentSessionId,
+        title: initialTitle,
+        paperCount: 0,
+        timeLabel: "Just now",
+        isActive: true,
+      };
+      setSessions([createdSession]);
+      setActiveSessionId(currentSessionId);
+    }
+
+    const userMsg: ChatMessage = {
+      id: `usr-${Date.now()}`,
+      sender: "user",
+      text,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
+    setInputMessage("");
+
+    // Persist user message to PostgreSQL
+    fetch(`/api/projects/${projectId}/chat/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: userMsg.id,
+        sessionId: currentSessionId,
+        sender: "user",
+        text: userMsg.text,
+        time: userMsg.time,
+      }),
+    }).catch((e) => console.error("Error saving user message to DB:", e));
+
+    // 1. CHECK IF USER WANTS TO DOWNLOAD PAPERS NATURALLY
+    const downloadAllMatch = text.match(/(?:download|get|save)\s+all/i);
+    const downloadNumMatch = text.match(
+      /(?:download|get|save)\s+(?:papers?|preprints?|items?)?\s*([\d\s,and#]+)/i
+    );
+
+    if (downloadAllMatch) {
+      const targets = papers.filter((p) => p.status === "available" || p.status === "failed");
+      if (targets.length > 0) {
+        targets.forEach((p) => handleDownloadPaper(p.id, p));
+        const aiMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          sender: "ai",
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          queuedInfo: {
+            count: targets.length,
+            total: queuedCount + targets.length,
+            paperIds: targets.map((t) => t.id),
+            titles: targets.map((t) => t.title),
+          },
+        };
+        setMessages((prev) => [...prev, aiMsg]);
+
+        // Save AI queued message to PostgreSQL
+        fetch(`/api/projects/${projectId}/chat/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: aiMsg.id,
+            sessionId: currentSessionId,
+            sender: "ai",
+            time: aiMsg.time,
+            queuedInfo: aiMsg.queuedInfo,
+          }),
+        }).catch((e) => console.error("Error saving AI queued message to DB:", e));
+
+        return;
+      }
+    } else if (downloadNumMatch && downloadNumMatch[1]) {
+      const numbers = (downloadNumMatch[1].match(/\d+/g) || []).map(Number);
+      if (numbers.length > 0) {
+        const targets = papers.filter((p) => numbers.includes(p.id));
+        if (targets.length > 0) {
+          targets.forEach((p) => handleDownloadPaper(p.id, p));
+          const aiMsg: ChatMessage = {
+            id: `ai-${Date.now()}`,
+            sender: "ai",
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            queuedInfo: {
+              count: targets.length,
+              total: queuedCount + targets.length,
+              paperIds: targets.map((t) => t.id),
+              titles: targets.map((t) => t.title),
+            },
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+
+          fetch(`/api/projects/${projectId}/chat/messages`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: aiMsg.id,
+              sessionId: currentSessionId,
+              sender: "ai",
+              time: aiMsg.time,
+              queuedInfo: aiMsg.queuedInfo,
+            }),
+          }).catch((e) => console.error("Error saving AI queued message to DB:", e));
+
+          return;
+        }
+      }
+    }
+
+    // 2. ACADEMIC SEARCH QUERY FLOW
+    let effectiveLimit = paperLimit;
+    const wordToNum: Record<string, number> = {
+      one: 1, two: 2, three: 3, four: 4, five: 5,
+      six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+      twelve: 12, fifteen: 15, twenty: 20,
+    };
+    const limitMatch = text.match(
+      /(?:find|search|show|get|fetch|bring|look\s+for)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty)\s+(?:recent|new|peer-reviewed|top|more)?\s*papers?/i
+    );
+    if (limitMatch && limitMatch[1]) {
+      const val = limitMatch[1].toLowerCase();
+      effectiveLimit = wordToNum[val] || parseInt(val, 10);
+      if (isNaN(effectiveLimit) || effectiveLimit <= 0) effectiveLimit = paperLimit;
+      setPaperLimit(effectiveLimit);
+      setCustomLimitInput(String(effectiveLimit));
+    }
+
+    let effectiveStartYear = startYear;
+    let effectiveEndYear = endYear;
+    const yearMatch = text.match(/(?:from\s+)?(20\d\d)\s*(?:-|to|–)\s*(20\d\d)/i);
+    if (yearMatch) {
+      const y1 = parseInt(yearMatch[1], 10);
+      const y2 = parseInt(yearMatch[2], 10);
+      if (!isNaN(y1) && !isNaN(y2) && y1 <= y2) {
+        effectiveStartYear = y1;
+        effectiveEndYear = y2;
+        setStartYear(y1);
+        setEndYear(y2);
+        setStartYearInput(String(y1));
+        setEndYearInput(String(y2));
+      }
+    }
+
+    let cleanQuery = text
+      .replace(
+        /^(?:please\s+)?(?:find|search|show|get|fetch|bring|look for)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty)?\s*(?:recent|new|peer-reviewed|top|more)?\s*(?:papers|preprints|articles)?\s*(?:on|about|for)?/i,
+        ""
+      )
+      .replace(
+        /(?:with\s+benchmarking\s+code|with\s+code|with\s+dataset|from\s+20\d\d\s*(?:-|to)\s*20\d\d).*$/i,
+        ""
+      )
+      .trim();
+
+    if (!cleanQuery || cleanQuery.length < 2) {
+      cleanQuery = text;
+    }
+
+    setIsSearching(true);
+
+    try {
+      const searchUrl = `/api/projects/${projectId}/papers/search?query=${encodeURIComponent(
+        cleanQuery
+      )}&limit=${effectiveLimit}&start_year=${effectiveStartYear}&end_year=${effectiveEndYear}&min_score=7`;
+      const res = await fetch(searchUrl);
+      const data = await res.json();
+
+      if (res.ok && data.success && Array.isArray(data.papers) && data.papers.length > 0) {
+        const totalScreened = data.candidates_screened || data.papers.length;
+        const serverMessage = data.message;
+
+        const mappedPapers: PaperItem[] = data.papers.map((p: any, idx: number) => {
+          const cleanId = p.paper_id;
+          const isAlreadyDownloaded =
+            downloadedIds.includes(cleanId) ||
+            downloadedIds.some((d) => d.includes(cleanId.split("v")[0]));
+
+          return {
+            id: idx + 1,
+            paperId: cleanId,
+            title: p.title,
+            venue: p.venue || `ArXiv:${cleanId.split("v")[0]}`,
+            venueType: "arxiv" as const,
+            authors:
+              p.authors && p.authors.length > 0
+                ? `${p.authors.slice(0, 3).join(", ")}${
+                    p.authors.length > 3 ? " et al." : ""
+                  } • ${p.published ? p.published.substring(0, 4) : ""}`
+                : "Unknown Authors",
+            snippet: p.summary
+              ? `"${p.summary.slice(0, 220)}..."`
+              : "No abstract available.",
+            status: isAlreadyDownloaded ? ("downloaded" as const) : ("available" as const),
+            pdfUrl: p.pdf_url,
+            entryUrl: p.entry_url || `https://arxiv.org/abs/${cleanId}`,
+            published: p.published,
+            relevanceScore: typeof p.relevance_score === "number" ? p.relevance_score : 8,
+            relevanceReason: p.relevance_reason,
+            matchedCriteria: Array.isArray(p.matched_criteria) ? p.matched_criteria : [],
+          };
+        });
+
+        setPapers(mappedPapers);
+
+        const introText = serverMessage
+          ? serverMessage
+          : `I've screened ${totalScreened} candidate preprints against your research objective. Here are ${mappedPapers.length} top-ranked papers that met the strict relevance threshold (≥7/10). You can click Download to Project on any card or command me naturally (e.g., "Download papers 1 and 3").`;
+
+        const aiMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          sender: "ai",
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          isPapersResponse: true,
+          papers: mappedPapers,
+          totalVerified: mappedPapers.length,
+          introText,
+        };
+
+        setMessages((prev) => [...prev, aiMsg]);
+
+        // Save AI message and papers to PostgreSQL
+        fetch(`/api/projects/${projectId}/chat/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: aiMsg.id,
+            sessionId: currentSessionId,
+            sender: "ai",
+            time: aiMsg.time,
+            isPapersResponse: true,
+            papers: mappedPapers,
+            introText: aiMsg.introText,
+            totalVerified: mappedPapers.length,
+          }),
+        }).catch((e) => console.error("Error saving AI papers response to DB:", e));
+
+        // Auto rename session title in state and DB if active session is default
+        setSessions((prev) =>
+          prev.map((s) => {
+            if (
+              s.id === currentSessionId &&
+              (s.title === "New Research Inquiry" || s.paperCount === 0)
+            ) {
+              const displayTitle =
+                cleanQuery.length > 35
+                  ? cleanQuery.slice(0, 35) + "..."
+                  : cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1);
+
+              fetch(`/api/projects/${projectId}/chat/sessions`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  sessionId: currentSessionId,
+                  title: displayTitle,
+                  paperCount: mappedPapers.length,
+                }),
+              }).catch((e) => console.error("Error updating session title in DB:", e));
+
+              return { ...s, title: displayTitle, paperCount: mappedPapers.length };
+            }
+            return s;
+          })
+        );
+      } else {
+        const fallbackMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          sender: "ai",
+          text: data?.message || `I searched ArXiv and screened candidates for "${cleanQuery}" within ${effectiveStartYear}-${effectiveEndYear}, but no candidates met the strict relevance criteria (≥7/10). Try broadening your research keywords or adjusting the publication window.`,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        setMessages((prev) => [...prev, fallbackMsg]);
+
+        fetch(`/api/projects/${projectId}/chat/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: fallbackMsg.id,
+            sessionId: currentSessionId,
+            sender: "ai",
+            text: fallbackMsg.text,
+            time: fallbackMsg.time,
+          }),
+        }).catch((e) => console.error("Error saving fallback message to DB:", e));
+      }
+    } catch (err) {
+      console.error("ArXiv search error:", err);
+      const errorMsg: ChatMessage = {
+        id: `ai-${Date.now()}`,
+        sender: "ai",
+        text: `Network or rate-limit issue connecting to ArXiv repository. Please try again in a few seconds.`,
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const filteredSessions = sessions.filter((s) =>
+    s.title.toLowerCase().includes(sessionFilter.toLowerCase())
+  );
+
+  return (
+    <div className="bg-background text-on-surface font-body-md text-body-md antialiased overflow-hidden flex h-screen w-screen selection:bg-primary-container selection:text-on-primary-container">
+      {/* ========================================== */}
+      {/* LEFT GLOBAL SIDEBAR (Common ProjectSidebar)*/}
+      {/* ========================================== */}
+      <ProjectSidebar activeTab="chatbot" projectId={projectId} projectName={projectName} />
+
+      {/* ========================================== */}
+      {/* MAIN WORKSPACE CONTAINER                   */}
+      {/* ========================================== */}
+      <div className="flex-1 flex flex-col ml-[260px] h-screen overflow-hidden bg-background">
+        {/* Top Workspace Navigation Bar (Shared Component: TopNavBar) */}
+        <header className="h-14 w-full px-6 flex items-center justify-between bg-surface-container-lowest/80 backdrop-blur-md border-b border-outline-variant/20 z-20 shrink-0">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/projects"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container border border-outline-variant/30 text-label-md font-label-md transition-all active:scale-95 shrink-0 group"
+              title="Back to Projects"
+            >
+              <span className="material-symbols-outlined text-[18px] group-hover:-translate-x-0.5 transition-transform">
+                arrow_back
+              </span>
+              <span className="text-xs font-medium">Exit</span>
+            </Link>
+
+            {/* Breadcrumbs matching Project Dashboard */}
+            <div className="flex items-center gap-2 font-label-md text-label-md text-on-surface-variant">
+              <Link href="/projects" className="hover:text-on-surface transition-colors">
+                Projects
+              </Link>
+              <span className="text-outline">/</span>
+              <Link
+                href={`/projects/${projectId}`}
+                className="hover:text-on-surface text-on-surface font-semibold max-w-[220px] truncate"
+                title={projectName}
+              >
+                {projectName}
+              </Link>
+              <span className="text-outline">/</span>
+              <span className="text-primary font-medium">Find Papers AI Chatbot</span>
+            </div>
+
+            {/* Search bar */}
+            <div className="relative hidden xl:flex items-center w-60">
+              <span className="material-symbols-outlined absolute left-3 text-outline text-[18px]">
+                search
+              </span>
+              <input
+                className="w-full bg-surface-container-high/60 border border-outline-variant/30 rounded-lg pl-9 pr-3 py-1.5 text-code-sm font-code-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-xs"
+                placeholder={`Search ${projectName}...`}
+                type="text"
+              />
+              <kbd className="absolute right-2.5 px-1.5 py-0.5 text-[10px] font-code-sm text-outline border border-outline-variant/40 rounded bg-surface">
+                ⌘K
+              </kbd>
+            </div>
+          </div>
+
+          {/* Trailing Action Cluster */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 border-r border-outline-variant/30 pr-3">
+              <button
+                className="p-1.5 text-outline hover:text-on-surface rounded hover:bg-surface-container-high transition-colors cursor-pointer"
+                title="Notifications"
+              >
+                <span className="material-symbols-outlined text-[20px]">notifications</span>
+              </button>
+              <button
+                className="p-1.5 text-outline hover:text-on-surface rounded hover:bg-surface-container-high transition-colors cursor-pointer"
+                title="Help Docs"
+              >
+                <span className="material-symbols-outlined text-[20px]">help</span>
+              </button>
+              <button
+                className="p-1.5 text-outline hover:text-on-surface rounded hover:bg-surface-container-high transition-colors cursor-pointer"
+                title="Audit History"
+              >
+                <span className="material-symbols-outlined text-[20px]">history</span>
+              </button>
+            </div>
+            <button className="px-3 py-1.5 text-label-md font-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-lg border border-outline-variant/30 transition-all active:scale-95 cursor-pointer">
+              Invite Member
+            </button>
+            <button className="px-3 py-1.5 text-label-md font-label-md bg-primary text-on-primary font-medium rounded-lg hover:bg-primary-fixed-dim transition-all active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer">
+              <span className="material-symbols-outlined text-[16px]">rocket_launch</span>
+              <span>Deploy Model</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Workspace Body: 2-Column Split (Left History Rail + Central Discovery Canvas) */}
+        <div className="flex-1 flex overflow-hidden relative">
+          {/* ========================================== */}
+          {/* COLUMN 1: Chat History & Session Drawer    */}
+          {/* ========================================== */}
+          <aside
+            className={`${
+              isHistoryCollapsed
+                ? "!w-0 !p-0 !border-r-0 pointer-events-none"
+                : "w-[240px]"
+            } shrink-0 bg-surface-container-low border-r border-outline-variant/20 flex flex-col justify-between overflow-hidden transition-all duration-300 ease-in-out`}
+            id="chat-history-sidebar"
+          >
+            <div className="p-3 flex flex-col gap-3 h-full overflow-hidden w-[240px]">
+              {/* Top Controls: New Chat CTA + Collapse Button */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={handleNewChat}
+                  className="flex-1 py-2 px-2.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 flex items-center justify-center gap-1.5 font-headline-md text-xs font-medium transition-all active:scale-[0.98] truncate cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px]">add_comment</span>
+                  <span className="truncate">+ New Chat</span>
+                </button>
+                <button
+                  onClick={() => setIsHistoryCollapsed(true)}
+                  className="p-2 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container-high border border-outline-variant/30 transition-colors active:scale-95 shrink-0 flex items-center justify-center cursor-pointer"
+                  title="Collapse Chat History"
+                >
+                  <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+                </button>
+              </div>
+
+              {/* Quick Filter Input */}
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-outline text-[16px]">
+                  filter_list
+                </span>
+                <input
+                  value={sessionFilter}
+                  onChange={(e) => setSessionFilter(e.target.value)}
+                  className="w-full bg-surface-container-lowest/80 border border-outline-variant/30 rounded-md pl-8 pr-2 py-1.5 text-code-sm font-code-sm text-on-surface placeholder:text-outline/70 focus:outline-none focus:border-primary text-xs"
+                  placeholder="Search conversations..."
+                  type="text"
+                />
+              </div>
+
+              {/* Section Label */}
+              <div className="flex items-center justify-between px-1 pt-1">
+                <span className="text-code-sm font-code-sm uppercase tracking-wider text-outline text-[11px] font-semibold">
+                  Recent Conversations
+                </span>
+                <span className="text-code-sm font-code-sm text-outline-variant text-[11px]">
+                  {filteredSessions.length} Total
+                </span>
+              </div>
+
+              {/* Session List */}
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
+                {filteredSessions.map((session) => {
+                  const isActive = session.id === activeSessionId;
+                  return (
+                    <div
+                      key={session.id}
+                      onClick={() => handleSelectSession(session.id)}
+                      className={`p-2.5 rounded-lg relative cursor-pointer group transition-all ${
+                        isActive
+                          ? "bg-surface-container-high border border-primary/40 shadow-sm"
+                          : "bg-surface-container/40 hover:bg-surface-container-high/60 border border-transparent hover:border-outline-variant/30"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-1">
+                        <span
+                          className={`font-headline-md text-body-md truncate leading-snug flex-1 ${
+                            isActive
+                              ? "font-semibold text-primary"
+                              : "text-on-surface"
+                          }`}
+                        >
+                          {session.title}
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isActive && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1"></span>
+                          )}
+                          {/* Three dots menu button for renaming */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openRenameModal(session.id);
+                            }}
+                            className={`p-1 -mr-1 rounded hover:bg-surface-container text-outline hover:text-on-surface transition-colors flex items-center justify-center cursor-pointer ${
+                              isActive ? "opacity-80 group-hover:opacity-100" : "opacity-0 group-hover:opacity-100"
+                            }`}
+                            title="Rename conversation"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">more_vert</span>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 text-code-sm font-code-sm text-[11px]">
+                        <span
+                          className={`flex items-center gap-1 ${
+                            isActive ? "text-primary-fixed-dim" : "text-outline"
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-[14px]">menu_book</span>
+                          {session.paperCount} papers
+                        </span>
+                        <span className="text-outline">{session.timeLabel}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Bottom Session Drawer Stats */}
+              <div className="pt-2 border-t border-outline-variant/20 flex items-center justify-between text-code-sm font-code-sm text-outline text-xs px-1">
+                <span>Storage: 41/100 MB</span>
+                <span className="text-primary font-medium cursor-pointer hover:underline">
+                  Manage
+                </span>
+              </div>
+            </div>
+          </aside>
+
+          {/* Collapsed History Floating / Edge Expand Dock Tab */}
+          {isHistoryCollapsed && (
+            <div className="absolute top-3 left-3 z-30 flex items-center">
+              <button
+                onClick={() => setIsHistoryCollapsed(false)}
+                className="flex items-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-primary hover:text-on-surface border border-outline-variant/40 shadow-lg backdrop-blur-md transition-all active:scale-95 group cursor-pointer"
+                title="Expand Chat History"
+              >
+                <span className="material-symbols-outlined text-[18px] group-hover:translate-x-0.5 transition-transform">
+                  chevron_right
+                </span>
+                <span className="material-symbols-outlined text-[16px] text-outline group-hover:text-primary transition-colors">
+                  chat
+                </span>
+                <span className="text-code-sm font-code-sm text-xs font-medium">History</span>
+              </button>
+            </div>
+          )}
+
+          {/* ========================================== */}
+          {/* COLUMN 2: Main Research Stream             */}
+          {/* ========================================== */}
+          <main className="flex-1 flex flex-col h-full overflow-hidden bg-background">
+            {/* Top Chat Header */}
+            <div className="h-14 px-6 bg-surface-container-lowest border-b border-outline-variant/20 flex items-center justify-between shrink-0 shadow-sm z-10">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-primary animate-ping"></span>
+                  <h1 className="font-headline-md font-semibold text-on-surface tracking-tight text-lg">
+                    {activeSession ? activeSession.title : `${projectName} Inquiry`}
+                  </h1>
+                </div>
+                <span className="text-outline">/</span>
+                <span className="px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/30 text-primary font-label-md text-code-sm">
+                  {projectName}
+                </span>
+                <span className="text-outline hidden md:inline">/</span>
+                {/* Model Tag Badge */}
+                <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant/40 text-code-sm font-code-sm text-on-surface-variant text-xs">
+                  <span className="material-symbols-outlined text-[15px] text-tertiary">
+                    neurology
+                  </span>
+                  <span>SupervisorX Scholar-v4 (ArXiv &amp; OpenAccess)</span>
+                </div>
+              </div>
+
+              {/* Direct Action CTA button to queue */}
+              <Link
+                href={`/projects/${projectId}/analysis`}
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-surface-container-high hover:bg-surface-container-highest border border-primary/40 text-primary hover:text-on-surface font-label-md text-label-md font-medium transition-all group shadow-sm active:scale-95 cursor-pointer"
+              >
+                <span>Go to Analyze Papers ({queuedCount} Queued)</span>
+                <span className="material-symbols-outlined text-[18px] group-hover:translate-x-1 transition-transform">
+                  arrow_forward
+                </span>
+              </Link>
+            </div>
+
+            {/* Chat Conversation Stream (Scrollable) */}
+            <div
+              ref={chatScrollRef}
+              className="flex-1 overflow-y-auto px-6 py-6 space-y-6"
+            >
+              {messages.length === 0 ? (
+                <div
+                  style={{ maxWidth: "680px", width: "100%" }}
+                  className="h-full min-h-[420px] w-full flex flex-col items-center justify-center text-center p-8 mx-auto space-y-6 my-auto"
+                >
+                  <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-lg">
+                    <span className="material-symbols-outlined text-[36px]">psychology</span>
+                  </div>
+                  <div className="w-full space-y-3" style={{ width: "100%" }}>
+                    <h2 className="text-2xl font-headline-md font-bold text-on-surface tracking-tight">
+                      {projectName} Research Inbox
+                    </h2>
+                    <p
+                      style={{ maxWidth: "620px", width: "100%", margin: "0 auto" }}
+                      className="text-sm font-body-md text-on-surface-variant leading-relaxed text-center break-normal whitespace-normal block"
+                    >
+                      I am SupervisorX, your academic research assistant. Ask me to find papers (e.g. <span className="text-primary font-medium">&quot;Find recent papers on {projectName}&quot;</span>), and I will scan arXiv, formulate academic queries, and retrieve relevant literature with full open-access download capabilities.
+                    </p>
+                  </div>
+
+                  {/* Suggested starter prompts */}
+                  <div
+                    style={{ maxWidth: "620px", width: "100%" }}
+                    className="pt-2 flex flex-col sm:flex-row gap-3 w-full justify-center"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setInputMessage(`Find 5 recent papers on ${projectName}`)}
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-surface-container-high/80 hover:bg-surface-container-highest border border-outline-variant/30 text-xs font-label-md text-on-surface hover:text-primary transition-all text-left flex items-center gap-2.5 cursor-pointer shadow-sm"
+                    >
+                      <span className="material-symbols-outlined text-primary text-[18px] shrink-0">manage_search</span>
+                      <span className="truncate">Find 5 recent papers on {projectName}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInputMessage("Find 10 recent peer-reviewed papers on sparse multi-head attention")}
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-surface-container-high/80 hover:bg-surface-container-highest border border-outline-variant/30 text-xs font-label-md text-on-surface hover:text-primary transition-all text-left flex items-center gap-2.5 cursor-pointer shadow-sm"
+                    >
+                      <span className="material-symbols-outlined text-primary text-[18px] shrink-0">auto_awesome</span>
+                      <span className="truncate">Sparse multi-head attention</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                messages.map((msg) => {
+                  if (msg.sender === "user") {
+                    return (
+                      <div
+                        key={msg.id}
+                        className="flex items-start justify-end gap-3 max-w-4xl ml-auto"
+                      >
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="bg-primary-container text-on-primary-container px-4 py-3 rounded-2xl rounded-tr-none shadow-sm max-w-[650px] font-body-md text-body-md">
+                          {msg.text}
+                        </div>
+                        <span className="text-code-sm font-code-sm text-outline text-[11px] pr-1">
+                          {msg.time} {msg.tag && `· ${msg.tag}`}
+                        </span>
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-primary text-xs font-bold shrink-0 border border-outline-variant/40">
+                        DR
+                      </div>
+                    </div>
+                  );
+                }
+
+                // AI Response with Papers Section
+                if (msg.isPapersResponse) {
+                  return (
+                    <div
+                      key={msg.id}
+                      className="flex items-start gap-3 max-w-5xl mr-auto"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
+                        <span className="material-symbols-outlined text-[18px]">smart_toy</span>
+                      </div>
+                      <div className="flex-1 space-y-4">
+                        <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl rounded-tl-none p-4 shadow-sm text-body-md text-on-surface">
+                          <p className="leading-relaxed">
+                            {msg.introText ? (
+                              msg.introText
+                            ) : (
+                              <>
+                                I&apos;ve scanned{" "}
+                                <span className="text-primary font-medium">ArXiv (cs.CL, cs.LG)</span>{" "}
+                                and{" "}
+                                <span className="text-primary font-medium">
+                                  conference proceedings
+                                </span>{" "}
+                                from {startYear}-{endYear}. Here are {(msg.papers || papers).length} highly relevant papers matching your
+                                criteria for{" "}
+                                <span className="text-on-surface font-semibold">
+                                  {projectName}
+                                </span>
+                                . You can click{" "}
+                                <span className="text-primary-fixed-dim font-mono text-xs bg-surface-container px-1 py-0.5 rounded">
+                                  Download to Project
+                                </span>{" "}
+                                on any card or command me naturally (e.g.,{" "}
+                                <span className="italic text-on-surface-variant">
+                                  &quot;Download papers 2, 4 and 7&quot;
+                                </span>
+                                ).
+                              </>
+                            )}
+                          </p>
+                        </div>
+
+                        {/* COMPACT PAPER CARDS SECTION */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between pb-1 border-b border-outline-variant/20">
+                            <div className="flex items-center gap-2">
+                              <span className="material-symbols-outlined text-primary text-[18px]">
+                                auto_awesome
+                              </span>
+                              <span className="font-headline-md text-body-md font-semibold text-on-surface">
+                                Discovered Preprints &amp; Conference Papers
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-surface-container text-xs font-code-sm text-primary border border-outline-variant/30">
+                                {msg.totalVerified || (msg.papers || papers).length} Verified
+                              </span>
+                            </div>
+                            <span className="text-code-sm font-code-sm text-outline text-xs">
+                              Sorted by Relevance Score • ArXiv Open Access
+                            </span>
+                          </div>
+
+                          {/* Render Paper Cards */}
+                          {(msg.papers || papers).map((paper) => (
+                            <article
+                              key={paper.id}
+                              className={`p-3.5 rounded-xl border transition-all flex flex-col md:flex-row md:items-start justify-between gap-3 relative overflow-hidden group ${
+                                paper.status === "failed"
+                                  ? "bg-surface-container-low border-error/40 hover:border-error"
+                                  : paper.status === "downloading"
+                                  ? "bg-surface-container-high/70 border-primary/50"
+                                  : "bg-surface-container-low border-outline-variant/30 hover:border-primary/50 shadow-sm hover:shadow-md"
+                              }`}
+                            >
+                              {/* Animated Progress Bar for downloading state */}
+                              {paper.status === "downloading" && (
+                                <div
+                                  className="absolute bottom-0 left-0 h-0.5 bg-primary transition-all duration-300"
+                                  style={{ width: `${paper.progress || 35}%` }}
+                                ></div>
+                              )}
+
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span
+                                    className={`text-code-sm font-code-sm font-semibold ${
+                                      paper.status === "failed" ? "text-error" : "text-primary"
+                                    }`}
+                                  >
+                                    #{paper.id}
+                                  </span>
+                                  {/* Paper Title Clickable in New Tab */}
+                                  <a
+                                    href={paper.entryUrl || paper.pdfUrl || `https://arxiv.org/abs/${paper.paperId || ""}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="font-headline-md text-body-md font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer inline-flex items-center gap-1.5 group/title"
+                                    title="Click to view and read paper on arXiv in a new tab"
+                                  >
+                                    <span className="truncate max-w-[420px] md:max-w-[540px]">{paper.title}</span>
+                                    <span className="material-symbols-outlined text-[15px] opacity-60 group-hover/title:opacity-100 text-outline group-hover/title:text-primary transition-all shrink-0">
+                                      open_in_new
+                                    </span>
+                                  </a>
+                                  <span
+                                    className={`text-code-sm font-code-sm px-1.5 py-0.2 rounded text-[11px] border ${
+                                      paper.venueType === "conference"
+                                        ? "bg-surface-container-high text-tertiary border-tertiary/20 font-medium"
+                                        : "bg-surface-container-high text-outline border-outline-variant/30"
+                                    }`}
+                                  >
+                                    {paper.venue}
+                                  </span>
+                                  {/* Relevance Score Badge */}
+                                  {paper.relevanceScore !== undefined && (
+                                    <span
+                                      className={`text-code-sm font-code-sm px-2 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1 shrink-0 ${
+                                        paper.relevanceScore >= 9
+                                          ? "bg-emerald-950/70 text-emerald-300 border-emerald-500/40"
+                                          : paper.relevanceScore >= 7
+                                          ? "bg-primary/20 text-primary border-primary/40"
+                                          : "bg-amber-950/70 text-amber-300 border-amber-500/40"
+                                      }`}
+                                      title={`Assessed by AI literature screener: ${paper.relevanceScore}/10 relevance score`}
+                                    >
+                                      <span className="material-symbols-outlined text-[13px]">
+                                        {paper.relevanceScore >= 9 ? "verified" : "check_circle"}
+                                      </span>
+                                      {paper.relevanceScore}/10 Match
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-code-sm font-code-sm text-outline mt-0.5">
+                                  {paper.authors}{" "}
+                                  {paper.tag && (
+                                    <>
+                                      •{" "}
+                                      <span className="text-emerald-400/90">{paper.tag}</span>
+                                    </>
+                                  )}
+                                </p>
+                                <p className="text-body-md text-on-surface-variant text-sm mt-1 line-clamp-2">
+                                  {paper.snippet}
+                                </p>
+
+                                {/* Evidence-Based Relevance Reasoning Box */}
+                                {paper.relevanceReason && (
+                                  <div className="mt-2.5 p-2.5 rounded-lg bg-surface-container-high/60 border border-outline-variant/20 text-xs">
+                                    <div className="flex items-center gap-1.5 text-primary font-medium mb-1">
+                                      <span className="material-symbols-outlined text-[14px]">psychology</span>
+                                      <span className="font-semibold text-[11px] uppercase tracking-wide">AI Relevance Analysis</span>
+                                    </div>
+                                    <p className="text-on-surface-variant/90 leading-relaxed font-sans">
+                                      {paper.relevanceReason}
+                                    </p>
+                                    {paper.matchedCriteria && paper.matchedCriteria.length > 0 && (
+                                      <div className="flex items-center gap-1.5 flex-wrap mt-2 pt-1.5 border-t border-outline-variant/15">
+                                        <span className="text-outline text-[10px] uppercase font-bold tracking-wider">Matched:</span>
+                                        {paper.matchedCriteria.map((criterion, idx) => (
+                                          <span
+                                            key={idx}
+                                            className="px-1.5 py-0.5 rounded text-[10px] bg-primary/10 text-primary border border-primary/20 font-medium"
+                                          >
+                                            {criterion}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Right status / action buttons */}
+                              <div className="shrink-0 flex items-center gap-2">
+                                {paper.status === "downloaded" && (
+                                  <button
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 text-label-md font-label-md cursor-default shrink-0 shadow-sm"
+                                    disabled
+                                  >
+                                    <span
+                                      className="material-symbols-outlined text-[16px] text-emerald-400"
+                                      style={{ fontVariationSettings: "'FILL' 1" }}
+                                    >
+                                      check_circle
+                                    </span>
+                                    <span>Already in Project - Downloaded</span>
+                                  </button>
+                                )}
+
+                                {paper.status === "available" && (
+                                  <button
+                                    onClick={() => handleDownloadPaper(paper.id, paper)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-on-primary hover:bg-primary-fixed-dim text-label-md font-label-md font-medium transition-all active:scale-95 shadow-sm cursor-pointer shrink-0"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">
+                                      download
+                                    </span>
+                                    <span>Download to Project</span>
+                                  </button>
+                                )}
+
+                                {paper.status === "downloading" && (
+                                  <div className="shrink-0 flex items-center gap-2 min-w-[190px]">
+                                    <div className="w-full flex flex-col gap-1">
+                                      <div className="flex items-center justify-between text-code-sm font-code-sm text-primary text-xs">
+                                        <span className="flex items-center gap-1">
+                                          <span className="material-symbols-outlined animate-spin text-[14px]">
+                                            sync
+                                          </span>
+                                          Downloading to storage...
+                                        </span>
+                                        <span className="font-bold">{paper.progress || 35}%</span>
+                                      </div>
+                                      <div className="w-full bg-surface-container-lowest h-1.5 rounded-full overflow-hidden border border-outline-variant/20">
+                                        <div
+                                          className="bg-primary h-full rounded-full transition-all duration-300"
+                                          style={{ width: `${paper.progress || 35}%` }}
+                                        ></div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {paper.status === "failed" && (
+                                  <button
+                                    onClick={() => handleDownloadPaper(paper.id, paper)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-error-container text-on-error-container hover:bg-error-container/80 text-label-md font-label-md font-medium transition-all active:scale-95 shadow-sm border border-error/30 cursor-pointer shrink-0"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px] text-error">
+                                      refresh
+                                    </span>
+                                    <span>Download Failed - Retry</span>
+                                  </button>
+                                )}
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // AI Queued / Follow-up Response
+                if (msg.queuedInfo) {
+                  return (
+                    <div
+                      key={msg.id}
+                      className="flex items-start gap-3 max-w-4xl mr-auto"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
+                        <span className="material-symbols-outlined text-[18px]">smart_toy</span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl rounded-tl-none p-4 shadow-sm text-body-md text-on-surface">
+                          <p>
+                            Queueing papers{" "}
+                            {msg.queuedInfo.paperIds.map((pid, idx) => (
+                              <span key={pid}>
+                                {idx > 0 &&
+                                  (idx === msg.queuedInfo!.paperIds.length - 1
+                                    ? " and "
+                                    : ", ")}
+                                <strong className="text-primary font-mono">#{pid}</strong>
+                                {msg.queuedInfo?.titles && msg.queuedInfo.titles[idx]
+                                  ? ` ('${msg.queuedInfo.titles[idx].slice(0, 24)}...')`
+                                  : ""}
+                              </span>
+                            ))}{" "}
+                            to{" "}
+                            <span className="font-medium text-on-surface">
+                              {projectName}
+                            </span>{" "}
+                            vault. Ingestion will auto-trigger in your background pipeline.
+                          </p>
+                          <div className="mt-3 p-3 rounded-lg bg-surface-container border border-outline-variant/30 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <span className="material-symbols-outlined text-primary text-[20px] animate-pulse">
+                                playlist_add_check
+                              </span>
+                              <span className="text-label-md font-label-md text-on-surface">
+                                {msg.queuedInfo.count} Papers Dispatched to Ingestion Pipeline ({msg.queuedInfo.total} Total Queued)
+                              </span>
+                            </div>
+                            <Link
+                              href={`/projects/${projectId}/analysis`}
+                              className="text-primary text-xs font-code-sm hover:underline flex items-center gap-1"
+                            >
+                              Open Queue
+                              <span className="material-symbols-outlined text-[14px]">
+                                open_in_new
+                              </span>
+                            </Link>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Generic AI text
+                return (
+                  <div
+                    key={msg.id}
+                    className="flex items-start gap-3 max-w-4xl mr-auto"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
+                      <span className="material-symbols-outlined text-[18px]">smart_toy</span>
+                    </div>
+                    <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl rounded-tl-none p-4 shadow-sm text-body-md text-on-surface">
+                      <p className="leading-relaxed">{msg.text}</p>
+                    </div>
+                  </div>
+                );
+              }))}
+
+              {/* Dynamic Real-time Searching & Abstract Screening Indicator */}
+              {isSearching && (
+                <div className="flex items-start gap-3 max-w-4xl mr-auto animate-fadeIn">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
+                    <span className="material-symbols-outlined text-[18px] animate-spin">
+                      progress_activity
+                    </span>
+                  </div>
+                  <div className="bg-surface-container-low border border-primary/30 rounded-2xl rounded-tl-none p-4 shadow-md text-on-surface flex-1 max-w-xl">
+                    <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-outline-variant/20">
+                      <span className="text-[11px] font-code-sm font-bold uppercase tracking-wider text-primary px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[14px]">
+                          {SEARCH_STAGES[searchStage].icon}
+                        </span>
+                        {SEARCH_STAGES[searchStage].badge}
+                      </span>
+                      <span className="text-code-sm text-outline text-[11px] flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                        Active Pipeline
+                      </span>
+                    </div>
+
+                    <p className="font-semibold text-body-md text-on-surface flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary text-[18px] animate-spin shrink-0">
+                        sync
+                      </span>
+                      <span>{SEARCH_STAGES[searchStage].title}</span>
+                    </p>
+                    <p className="text-xs text-on-surface-variant mt-1 pl-6.5 leading-relaxed">
+                      {SEARCH_STAGES[searchStage].subtitle}
+                    </p>
+
+                    {/* Progress Step Dots */}
+                    <div className="flex items-center gap-1.5 mt-3 pl-6.5">
+                      {[0, 1, 2, 3].map((step) => (
+                        <div
+                          key={step}
+                          className={`h-1.5 rounded-full transition-all duration-500 ${
+                            step === searchStage
+                              ? "w-7 bg-primary"
+                              : step < searchStage
+                              ? "w-2.5 bg-primary/50"
+                              : "w-2.5 bg-surface-container-high"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ========================================== */}
+            {/* STICKY BOTTOM CONVERSATIONAL INPUT BAR     */}
+            {/* ========================================== */}
+            <div className="p-4 bg-surface-container-lowest/90 backdrop-blur-md border-t border-outline-variant/20 shrink-0">
+              <div className="max-w-5xl mx-auto space-y-2.5">
+                {/* Quick Prompt Suggestion Pills */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 text-code-sm font-code-sm no-scrollbar">
+                  <span className="text-outline text-xs flex items-center gap-1 shrink-0">
+                    <span className="material-symbols-outlined text-[14px]">bolt</span>
+                    Quick:
+                  </span>
+                  <button
+                    onClick={() => {
+                      setInputMessage("Download all remaining papers");
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-primary transition-all whitespace-nowrap active:scale-95 cursor-pointer text-xs"
+                  >
+                    Download all remaining papers
+                  </button>
+                  <button
+                    onClick={() => {
+                      setInputMessage("Find 5 more papers on quantization");
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-primary transition-all whitespace-nowrap active:scale-95 cursor-pointer text-xs"
+                  >
+                    Find 5 more papers on quantization
+                  </button>
+                  <button
+                    onClick={() => {
+                      setInputMessage("Summarize key methodologies");
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-primary transition-all whitespace-nowrap active:scale-95 cursor-pointer text-xs"
+                  >
+                    Summarize key methodologies
+                  </button>
+                  <button
+                    onClick={() => {
+                      setInputMessage("Filter by code availability");
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-primary transition-all whitespace-nowrap active:scale-95 cursor-pointer text-xs"
+                  >
+                    Filter by code availability
+                  </button>
+                </div>
+
+                {/* Input Box Container */}
+                <form
+                  onSubmit={handleSendMessage}
+                  className="relative bg-surface-container rounded-xl border border-outline-variant/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all p-2 flex flex-col gap-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-outline pl-1 text-[20px] shrink-0">
+                      search
+                    </span>
+                    <input
+                      value={inputMessage}
+                      onChange={(e) => setInputMessage(e.target.value)}
+                      className="w-full bg-transparent border-0 text-on-surface placeholder:text-outline text-body-md focus:ring-0 p-0 focus:outline-none"
+                      placeholder="Ask for papers, request downloads (e.g. 'Download papers 2 and 6'), or explore concepts..."
+                      type="text"
+                    />
+                  </div>
+
+                  {/* Input Toolbar & Controls */}
+                  <div className="flex items-center justify-between pt-1 border-t border-outline-variant/20 px-1">
+                    {/* Left Source Badges & Limit dropdown */}
+                    <div className="flex items-center gap-2">
+                      {/* Sources Dropdown */}
+                      <div className="relative inline-block text-left">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsSourcesMenuOpen(!isSourcesMenuOpen);
+                            setIsLimitMenuOpen(false);
+                            setIsYearMenuOpen(false);
+                          }}
+                          className="flex items-center gap-1.5 text-code-sm font-code-sm text-on-surface-variant bg-surface-container-low hover:bg-surface-container px-2.5 py-1 rounded-lg border border-outline-variant/30 text-xs transition-colors shadow-sm cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[15px] text-primary">
+                            database
+                          </span>
+                          <span className="font-medium">
+                            Sources ({activeSourcesCount})
+                          </span>
+                          <span className="material-symbols-outlined text-[14px] text-outline">
+                            expand_more
+                          </span>
+                        </button>
+
+                        {isSourcesMenuOpen && (
+                          <div className="absolute bottom-full left-0 mb-2 w-64 rounded-xl bg-surface-container-high border border-outline-variant/40 shadow-xl p-2 z-30 flex flex-col gap-1">
+                            <div className="flex items-center justify-between px-2 py-1 border-b border-outline-variant/20 mb-1">
+                              <span className="text-[11px] font-code-sm uppercase tracking-wider text-outline font-semibold">
+                                Select Academic Repos
+                              </span>
+                              <span className="text-[10px] font-code-sm text-primary">
+                                {sources.length} Available
+                              </span>
+                            </div>
+                            {sources.map((src, idx) => (
+                              <label
+                                key={src.name}
+                                className="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container cursor-pointer transition-colors text-xs"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={src.checked}
+                                    onChange={() => toggleSource(idx)}
+                                    className="rounded bg-surface-container-highest border-outline-variant/40 text-primary focus:ring-0 w-3.5 h-3.5"
+                                  />
+                                  <span className="text-on-surface font-medium">
+                                    {src.name}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] font-code-sm text-primary bg-primary/10 px-1.5 py-0.2 rounded border border-primary/20">
+                                  {src.sub}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Paper Limit Dropdown */}
+                      <div className="relative inline-block text-left">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsLimitMenuOpen(!isLimitMenuOpen);
+                            setIsSourcesMenuOpen(false);
+                            setIsYearMenuOpen(false);
+                          }}
+                          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-container-low hover:bg-surface-container border border-outline-variant/30 text-code-sm font-code-sm text-xs text-outline transition-colors shadow-sm cursor-pointer"
+                        >
+                          <span>Limit:</span>
+                          <span className="text-primary font-semibold">
+                            {paperLimit} papers
+                          </span>
+                          <span className="material-symbols-outlined text-[14px] text-outline">
+                            expand_more
+                          </span>
+                        </button>
+
+                        {isLimitMenuOpen && (
+                          <div className="absolute bottom-full left-0 mb-2 w-56 rounded-xl bg-surface-container-high border border-outline-variant/40 shadow-2xl p-3 z-50 text-xs flex flex-col gap-2.5 backdrop-blur-md">
+                            <div className="flex items-center justify-between pb-1.5 border-b border-outline-variant/20">
+                              <span className="text-[11px] font-code-sm uppercase tracking-wider text-outline font-semibold">
+                                Max Paper Results
+                              </span>
+                              <span className="text-[10px] font-code-sm text-primary">
+                                Presets
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {[5, 10, 15, 20, 25, 50].map((num) => (
+                                <button
+                                  key={num}
+                                  type="button"
+                                  onClick={() => {
+                                    setPaperLimit(num);
+                                    setCustomLimitInput(String(num));
+                                    setIsLimitMenuOpen(false);
+                                  }}
+                                  className={`px-2 py-1 rounded-lg text-center font-code-sm text-xs transition-colors border cursor-pointer ${
+                                    paperLimit === num
+                                      ? "bg-primary/20 text-primary font-semibold border-primary/30"
+                                      : "bg-surface-container hover:bg-primary/20 hover:text-primary text-on-surface border-outline-variant/20"
+                                  }`}
+                                >
+                                  {num}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="pt-1.5 border-t border-outline-variant/20 flex flex-col gap-1.5">
+                              <label className="text-[10px] font-code-sm text-outline uppercase tracking-wider">
+                                Custom Limit
+                              </label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={100}
+                                  value={customLimitInput}
+                                  onChange={(e) => setCustomLimitInput(e.target.value)}
+                                  className="w-full bg-surface-container-lowest/80 border border-outline-variant/30 rounded-lg px-2 py-1 text-code-sm font-code-sm text-on-surface placeholder:text-outline/70 focus:outline-none focus:border-primary text-xs"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const val = parseInt(customLimitInput, 10);
+                                    if (!isNaN(val) && val >= 1) {
+                                      setPaperLimit(val);
+                                      setIsLimitMenuOpen(false);
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-primary hover:bg-primary-fixed-dim text-on-primary font-medium text-xs font-label-md transition-all active:scale-95 shadow-sm shrink-0 cursor-pointer"
+                                >
+                                  Apply
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Year Range Dropdown (Right side of Limit papers) */}
+                      <div className="relative inline-block text-left">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsYearMenuOpen(!isYearMenuOpen);
+                            setIsLimitMenuOpen(false);
+                            setIsSourcesMenuOpen(false);
+                          }}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-surface-container border border-outline-variant/30 text-code-sm font-code-sm text-xs text-outline transition-colors shadow-sm cursor-pointer"
+                          title="Filter papers by publication year range"
+                        >
+                          <span className="material-symbols-outlined text-[15px] text-tertiary">
+                            calendar_month
+                          </span>
+                          <span>Years:</span>
+                          <span className="text-tertiary font-semibold">
+                            {startYear} - {endYear}
+                          </span>
+                          <span className="material-symbols-outlined text-[14px] text-outline">
+                            expand_more
+                          </span>
+                        </button>
+
+                        {isYearMenuOpen && (
+                          <div className="absolute bottom-full left-0 mb-2 w-72 rounded-xl bg-surface-container-high border border-outline-variant/40 shadow-2xl p-3 z-50 text-xs flex flex-col gap-2.5 backdrop-blur-md">
+                            {/* Year Menu Header */}
+                            <div className="flex items-center justify-between pb-1.5 border-b border-outline-variant/20">
+                              <span className="text-[11px] font-code-sm uppercase tracking-wider text-outline font-semibold">
+                                Publication Year Range
+                              </span>
+                              <span className="text-[10px] font-code-sm text-tertiary bg-tertiary/10 px-1.5 py-0.5 rounded border border-tertiary/20">
+                                {startYear} - {endYear}
+                              </span>
+                            </div>
+
+                            {/* Presets Grid */}
+                            <div className="flex flex-col gap-1">
+                              <span className="text-[10px] font-code-sm text-outline uppercase tracking-wider">
+                                Quick Presets
+                              </span>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {[
+                                  { label: "2023 - 2026 (Default)", start: 2023, end: 2026 },
+                                  { label: "2024 - 2026 (Last 2Y)", start: 2024, end: 2026 },
+                                  { label: "2025 - 2026 (Last 1Y)", start: 2025, end: 2026 },
+                                  { label: "2021 - 2026 (Last 5Y)", start: 2021, end: 2026 },
+                                  { label: "2018 - 2026 (Recent)", start: 2018, end: 2026 },
+                                  { label: "All Years (1990+)", start: 1990, end: 2026 },
+                                ].map((preset) => {
+                                  const isActive =
+                                    startYear === preset.start && endYear === preset.end;
+                                  return (
+                                    <button
+                                      key={preset.label}
+                                      type="button"
+                                      onClick={() => {
+                                        setStartYear(preset.start);
+                                        setEndYear(preset.end);
+                                        setStartYearInput(String(preset.start));
+                                        setEndYearInput(String(preset.end));
+                                        setIsYearMenuOpen(false);
+                                      }}
+                                      className={`px-2 py-1 rounded-lg text-left font-code-sm text-[11px] transition-colors border cursor-pointer truncate ${
+                                        isActive
+                                          ? "bg-tertiary/20 text-tertiary font-semibold border-tertiary/30"
+                                          : "bg-surface-container hover:bg-tertiary/15 hover:text-tertiary text-on-surface border-outline-variant/20"
+                                      }`}
+                                    >
+                                      {preset.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Custom Year Inputs */}
+                            <div className="pt-2 border-t border-outline-variant/20 flex flex-col gap-2">
+                              <span className="text-[10px] font-code-sm text-outline uppercase tracking-wider">
+                                Custom Window
+                              </span>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-[10px] font-code-sm text-outline block mb-0.5">
+                                    Start Year
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={1950}
+                                    max={2026}
+                                    value={startYearInput}
+                                    onChange={(e) => setStartYearInput(e.target.value)}
+                                    className="w-full bg-surface-container-lowest/80 border border-outline-variant/30 rounded-lg px-2 py-1 text-code-sm font-code-sm text-on-surface focus:outline-none focus:border-tertiary text-xs"
+                                    placeholder="2023"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-code-sm text-outline block mb-0.5">
+                                    End Year
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={1950}
+                                    max={2026}
+                                    value={endYearInput}
+                                    onChange={(e) => setEndYearInput(e.target.value)}
+                                    className="w-full bg-surface-container-lowest/80 border border-outline-variant/30 rounded-lg px-2 py-1 text-code-sm font-code-sm text-on-surface focus:outline-none focus:border-tertiary text-xs"
+                                    placeholder="2026"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setStartYear(2023);
+                                    setEndYear(2026);
+                                    setStartYearInput("2023");
+                                    setEndYearInput("2026");
+                                    setIsYearMenuOpen(false);
+                                  }}
+                                  className="text-[11px] font-code-sm text-outline hover:text-on-surface hover:underline cursor-pointer"
+                                >
+                                  Reset (2023-2026)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const s = parseInt(startYearInput, 10);
+                                    const e = parseInt(endYearInput, 10);
+                                    if (!isNaN(s) && !isNaN(e) && s <= e) {
+                                      setStartYear(s);
+                                      setEndYear(e);
+                                      setIsYearMenuOpen(false);
+                                    } else {
+                                      alert("Start year must be less than or equal to End year.");
+                                    }
+                                  }}
+                                  className="px-3 py-1 rounded-lg bg-tertiary hover:bg-tertiary-fixed text-on-tertiary font-medium text-xs font-label-md transition-all active:scale-95 shadow-sm cursor-pointer"
+                                >
+                                  Apply
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right Action Buttons */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="p-1.5 text-outline hover:text-on-surface rounded hover:bg-surface-container-high transition-colors cursor-pointer"
+                        title="Attach Paper or BibTeX"
+                      >
+                        <span className="material-symbols-outlined text-[20px]">
+                          attach_file
+                        </span>
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-1.5 rounded-lg bg-primary text-on-primary font-medium text-label-md font-label-md hover:bg-primary-fixed-dim transition-all flex items-center gap-1.5 active:scale-95 shadow-sm cursor-pointer"
+                      >
+                        <span>Send</span>
+                        <span className="material-symbols-outlined text-[16px]">send</span>
+                      </button>
+                    </div>
+                  </div>
+                </form>
+
+                {/* Footer Compliance Microcopy */}
+                <div className="flex items-center justify-between text-[11px] font-code-sm text-outline px-1">
+                  <span>
+                    SupervisorX v4.2 Semantic Engine • Zero Hallucination Retrieval Grounded in OpenAccess Datasets
+                  </span>
+                  <span>Context: 12.4k / 32k tokens used</span>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+
+      {/* ========================================== */}
+      {/* RENAME CHAT TITLE MODAL DIALOG             */}
+      {/* ========================================== */}
+      {isRenameModalOpen && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsRenameModalOpen(false);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md transition-opacity duration-200"
+        >
+          <div className="w-full max-w-[480px] rounded-2xl bg-surface-container-low border border-outline-variant/40 shadow-2xl p-6 flex flex-col gap-5 transform transition-transform duration-200 scale-100">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-outline-variant/20">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                  <span className="material-symbols-outlined text-[20px]">edit</span>
+                </div>
+                <h3 className="font-headline-md text-headline-md text-base font-semibold text-on-surface">
+                  Rename Conversation
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsRenameModalOpen(false)}
+                className="p-1 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            {/* Form Content */}
+            <div className="flex flex-col gap-3">
+              <label className="text-label-md font-label-md text-on-surface-variant font-medium text-xs flex justify-between items-center">
+                <span>Chat Conversation Title</span>
+                <span className="text-outline text-[11px]">
+                  {renameInputTitle.length}/80
+                </span>
+              </label>
+              <div className="relative">
+                <input
+                  autoFocus
+                  maxLength={80}
+                  value={renameInputTitle}
+                  onChange={(e) => setRenameInputTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      saveRenamedTitle();
+                    } else if (e.key === "Escape") {
+                      setIsRenameModalOpen(false);
+                    }
+                  }}
+                  className="w-full bg-surface-container border border-outline-variant/40 focus:border-primary focus:ring-1 focus:ring-primary rounded-xl px-3.5 py-2.5 text-body-md font-body-md text-on-surface placeholder:text-outline text-sm transition-all shadow-inner"
+                  placeholder="Enter conversation title..."
+                  type="text"
+                />
+              </div>
+              <p className="text-code-sm font-code-sm text-outline text-[11px]">
+                Renaming updates your research workspace session label and semantic index.
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsRenameModalOpen(false)}
+                className="px-4 py-2 rounded-lg border border-outline-variant/30 text-label-md font-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all active:scale-95 text-xs font-medium cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveRenamedTitle}
+                className="px-4 py-2 rounded-lg bg-primary hover:bg-primary-fixed-dim text-on-primary text-label-md font-label-md font-medium transition-all shadow-sm active:scale-95 text-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">check</span>
+                <span>Save Changes</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
