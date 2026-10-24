@@ -3,6 +3,23 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import ProjectSidebar from "@/components/common/ProjectSidebar";
+import FormattedResearchMarkdown from "./FormattedResearchMarkdown";
+
+interface Citation {
+  citation_index: number;
+  paper_id: string;
+  paper_title: string;
+  authors: string;
+  year?: number;
+  section_title: string;
+  page_start?: number;
+  page_end?: number;
+  page_label: string;
+  claim_supported: string;
+  pdf_url?: string;
+  is_visual?: boolean;
+  figure_number?: string;
+}
 
 interface Session {
   id: string;
@@ -208,6 +225,8 @@ interface ChatMessage {
   papers?: PaperItem[];
   introText?: string;
   totalVerified?: number;
+  citations?: Citation[];
+  intent?: string;
   queuedInfo?: {
     count: number;
     total: number;
@@ -289,6 +308,21 @@ export default function ProjectResearchChatbot({
     return () => clearInterval(interval);
   }, [isSearching]);
 
+  const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [synthesizingStage, setSynthesizingStage] = useState(0);
+
+  // Cycle through live QA progress stages every 2.4s while synthesizing
+  useEffect(() => {
+    if (!isSynthesizing) {
+      setSynthesizingStage(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setSynthesizingStage((prev) => (prev + 1) % 4);
+    }, 2400);
+    return () => clearInterval(interval);
+  }, [isSynthesizing]);
+
   const SEARCH_STAGES = [
     {
       title: "Formulating targeted academic search queries...",
@@ -313,6 +347,33 @@ export default function ProjectResearchChatbot({
       subtitle: "Applying strict 1–10 relevance threshold, rejecting weak keyword overlaps, and compiling evidence.",
       icon: "verified",
       badge: "Stage 4/4: Relevance Ranking",
+    },
+  ];
+
+  const QA_STAGES = [
+    {
+      title: "Auditing analyzed paper library & routing research intent...",
+      subtitle: "Inspecting verified pgvector records and classifying query across scientific workflows.",
+      icon: "account_tree",
+      badge: "Stage 1/4: Intent Routing & Audit",
+    },
+    {
+      title: "Generating 2048-D semantic vector query embedding...",
+      subtitle: "Formulating dense query vector via remote GPU using nvidia/nemotron-3-embed-1b.",
+      icon: "dataset",
+      badge: "Stage 2/4: Vector Query Formulation",
+    },
+    {
+      title: "Retrieving grounded evidence from Supabase pgvector...",
+      subtitle: "Performing cosine distance ranking across paper text chunks, sections, and visual items.",
+      icon: "find_in_page",
+      badge: "Stage 3/4: Evidence Retrieval",
+    },
+    {
+      title: "Synthesizing evidence-based answer with traceable citations...",
+      subtitle: "Synthesizing findings across papers and anchoring claims to physical PDF pages and section headings.",
+      icon: "fact_check",
+      badge: "Stage 4/4: Grounded Synthesis & Citations",
     },
   ];
 
@@ -748,7 +809,7 @@ export default function ProjectResearchChatbot({
       }
     }
 
-    // 2. ACADEMIC SEARCH QUERY FLOW
+    // 2. UNIFIED RESEARCH CHATBOT FLOW (Search vs Grounded QA vs Compare vs Summarize)
     let effectiveLimit = paperLimit;
     const wordToNum: Record<string, number> = {
       one: 1, two: 2, three: 3, four: 4, five: 5,
@@ -782,22 +843,22 @@ export default function ProjectResearchChatbot({
       }
     }
 
-    let cleanQuery = text
-      .replace(
-        /^(?:please\s+)?(?:find|search|show|get|fetch|bring|look for)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty)?\s*(?:recent|new|peer-reviewed|top|more)?\s*(?:papers|preprints|articles)?\s*(?:on|about|for)?/i,
-        ""
-      )
-      .replace(
-        /(?:with\s+benchmarking\s+code|with\s+code|with\s+dataset|from\s+20\d\d\s*(?:-|to)\s*20\d\d).*$/i,
-        ""
-      )
-      .trim();
+    // Determine initial visual progress state
+    const lowerText = text.toLowerCase();
+    const isSearchGuess =
+      lowerText.startsWith("find") ||
+      lowerText.startsWith("search") ||
+      lowerText.startsWith("look for") ||
+      lowerText.startsWith("bring") ||
+      lowerText.includes("papers about") ||
+      lowerText.includes("preprints about") ||
+      lowerText.includes("find papers");
 
-    if (!cleanQuery || cleanQuery.length < 2) {
-      cleanQuery = text;
+    if (isSearchGuess) {
+      setIsSearching(true);
+    } else {
+      setIsSynthesizing(true);
     }
-
-    setIsSearching(true);
 
     try {
       // Collect all previously seen, screened, and downloaded paper IDs across this conversation
@@ -816,19 +877,31 @@ export default function ProjectResearchChatbot({
 
       const excludeParam = Array.from(excludedIdsSet).slice(0, 80).join(",");
 
-      const searchUrl = `/api/projects/${projectId}/papers/search?query=${encodeURIComponent(
-        cleanQuery
-      )}&limit=${effectiveLimit}&start_year=${effectiveStartYear}&end_year=${effectiveEndYear}&min_score=7${
-        excludeParam ? `&exclude_ids=${encodeURIComponent(excludeParam)}` : ""
-      }`;
-      const res = await fetch(searchUrl);
-      const data = await res.json();
+      const chatRes = await fetch(`/api/projects/${projectId}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          sessionId: currentSessionId,
+          history: messages.slice(-5).map((m) => ({
+            sender: m.sender,
+            text: m.text || (m.isPapersResponse ? "Found papers" : ""),
+          })),
+          limit: effectiveLimit,
+          startYear: effectiveStartYear,
+          endYear: effectiveEndYear,
+          minScore: 7,
+          excludeIds: excludeParam,
+        }),
+      });
+
+      const data = await chatRes.json();
 
       if (data && Array.isArray(data.screened_ids)) {
         data.screened_ids.forEach((id: string) => allSessionScreenedIds.current.add(id));
       }
 
-      if (res.ok && data.success && Array.isArray(data.papers) && data.papers.length > 0) {
+      if (data.intent === "paper_search" && data.is_papers_response && Array.isArray(data.papers) && data.papers.length > 0) {
         data.papers.forEach((p: any) => {
           if (p.paper_id) allSessionScreenedIds.current.add(p.paper_id);
         });
@@ -880,6 +953,7 @@ export default function ProjectResearchChatbot({
           papers: mappedPapers,
           totalVerified: mappedPapers.length,
           introText,
+          intent: "paper_search",
         };
 
         setMessages((prev) => [...prev, aiMsg]);
@@ -897,42 +971,45 @@ export default function ProjectResearchChatbot({
             papers: mappedPapers,
             introText: aiMsg.introText,
             totalVerified: mappedPapers.length,
+            intent: "paper_search",
           }),
         }).catch((e) => console.error("Error saving AI papers response to DB:", e));
+      } else if (data.intent === "paper_qa" || data.intent === "compare_papers" || data.intent === "summarize_papers") {
+        const aiMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          sender: "ai",
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          isPapersResponse: false,
+          text: data.answer || "No response generated.",
+          citations: data.citations || [],
+          intent: data.intent,
+        };
 
-        // Auto rename session title in state and DB if active session is default
-        setSessions((prev) =>
-          prev.map((s) => {
-            if (
-              s.id === currentSessionId &&
-              (s.title === "New Research Inquiry" || s.paperCount === 0)
-            ) {
-              const displayTitle =
-                cleanQuery.length > 35
-                  ? cleanQuery.slice(0, 35) + "..."
-                  : cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1);
+        setMessages((prev) => [...prev, aiMsg]);
 
-              fetch(`/api/projects/${projectId}/chat/sessions`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  sessionId: currentSessionId,
-                  title: displayTitle,
-                  paperCount: mappedPapers.length,
-                }),
-              }).catch((e) => console.error("Error updating session title in DB:", e));
-
-              return { ...s, title: displayTitle, paperCount: mappedPapers.length };
-            }
-            return s;
-          })
-        );
+        // Save AI grounded message and citations to PostgreSQL
+        fetch(`/api/projects/${projectId}/chat/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: aiMsg.id,
+            sessionId: currentSessionId,
+            sender: "ai",
+            time: aiMsg.time,
+            isPapersResponse: false,
+            text: aiMsg.text,
+            citations: aiMsg.citations,
+            intent: aiMsg.intent,
+          }),
+        }).catch((e) => console.error("Error saving AI QA response to DB:", e));
       } else {
+        // Conversational or fallback response
         const fallbackMsg: ChatMessage = {
           id: `ai-${Date.now()}`,
           sender: "ai",
-          text: data?.message || `I searched ArXiv and screened candidates for "${cleanQuery}" within ${effectiveStartYear}-${effectiveEndYear}, but no candidates met the strict relevance criteria (≥7/10). Try broadening your research keywords or adjusting the publication window.`,
+          text: data.answer || data.message || `No results or response generated. Try refining your research inquiry.`,
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          intent: data.intent || "general_chat",
         };
         setMessages((prev) => [...prev, fallbackMsg]);
 
@@ -945,20 +1022,49 @@ export default function ProjectResearchChatbot({
             sender: "ai",
             text: fallbackMsg.text,
             time: fallbackMsg.time,
+            intent: fallbackMsg.intent,
           }),
         }).catch((e) => console.error("Error saving fallback message to DB:", e));
       }
+
+      // Auto rename session title in state and DB if active session is default
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (
+            s.id === currentSessionId &&
+            (s.title === "New Research Inquiry" || s.paperCount === 0)
+          ) {
+            const displayTitle =
+              text.length > 35
+                ? text.slice(0, 35) + "..."
+                : text.charAt(0).toUpperCase() + text.slice(1);
+
+            fetch(`/api/projects/${projectId}/chat/sessions`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sessionId: currentSessionId,
+                title: displayTitle,
+              }),
+            }).catch((e) => console.error("Error updating session title in DB:", e));
+
+            return { ...s, title: displayTitle };
+          }
+          return s;
+        })
+      );
     } catch (err) {
-      console.error("ArXiv search error:", err);
+      console.error("Chat orchestration error:", err);
       const errorMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         sender: "ai",
-        text: `Network or rate-limit issue connecting to ArXiv repository. Please try again in a few seconds.`,
+        text: `Temporary network or service issue processing research query. Please try again.`,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsSearching(false);
+      setIsSynthesizing(false);
     }
   };
 
@@ -1609,23 +1715,147 @@ export default function ProjectResearchChatbot({
                   );
                 }
 
-                // Generic AI text
+                // Generic AI text / Grounded QA / Comparison / Summary response
                 return (
                   <div
                     key={msg.id}
-                    className="flex items-start gap-3 max-w-4xl mr-auto"
+                    className="flex items-start gap-3 max-w-5xl mr-auto"
                   >
                     <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
-                      <span className="material-symbols-outlined text-[18px]">smart_toy</span>
+                      <span className="material-symbols-outlined text-[18px]">
+                        {msg.intent === "compare_papers"
+                          ? "balance"
+                          : msg.intent === "summarize_papers"
+                          ? "summarize"
+                          : msg.citations && msg.citations.length > 0
+                          ? "psychology"
+                          : "smart_toy"}
+                      </span>
                     </div>
-                    <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl rounded-tl-none p-4 shadow-sm text-body-md text-on-surface">
-                      <p className="leading-relaxed">{msg.text}</p>
+
+                    <div className="flex-1 space-y-3 min-w-0">
+                      {/* Intent pill badge if QA / Compare / Summary */}
+                      {msg.intent &&
+                        (msg.intent === "paper_qa" ||
+                          msg.intent === "compare_papers" ||
+                          msg.intent === "summarize_papers") && (
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-code-sm font-semibold border bg-primary/10 border-primary/30 text-primary">
+                              <span className="material-symbols-outlined text-[13px]">
+                                {msg.intent === "compare_papers"
+                                  ? "compare_arrows"
+                                  : msg.intent === "summarize_papers"
+                                  ? "auto_stories"
+                                  : "verified"}
+                              </span>
+                              {msg.intent === "compare_papers"
+                                ? "Comparative Research Synthesis"
+                                : msg.intent === "summarize_papers"
+                                ? "Structured Literature Summary"
+                                : "Evidence-Grounded Answer"}
+                            </span>
+                            <span className="text-code-sm text-outline text-[11px]">
+                              Grounded on Analyzed PDFs
+                            </span>
+                          </div>
+                        )}
+
+                      {/* Main Formatted Markdown Answer */}
+                      <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl rounded-tl-none p-4 md:p-5 shadow-sm text-body-md text-on-surface">
+                        <FormattedResearchMarkdown content={msg.text || ""} />
+                      </div>
+
+                      {/* Traceable Citations Reference Section */}
+                      {msg.citations && msg.citations.length > 0 && (
+                        <div className="p-3.5 md:p-4 rounded-xl bg-surface-container/60 border border-outline-variant/30 space-y-3">
+                          <div className="flex items-center justify-between pb-2 border-b border-outline-variant/20">
+                            <div className="flex items-center gap-2">
+                              <span className="material-symbols-outlined text-primary text-[18px]">
+                                menu_book
+                              </span>
+                              <span className="text-xs font-semibold uppercase tracking-wider text-on-surface">
+                                Traceable Source Citations ({msg.citations.length})
+                              </span>
+                            </div>
+                            <span className="text-[11px] font-code-sm text-outline">
+                              Verified against Supabase pgvector
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2.5">
+                            {msg.citations.map((c) => (
+                              <div
+                                key={c.citation_index}
+                                className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/20 hover:border-primary/40 transition-all flex flex-col sm:flex-row sm:items-start justify-between gap-3 text-xs"
+                              >
+                                <div className="space-y-1.5 flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="px-1.5 py-0.5 rounded font-mono font-bold bg-primary/20 text-primary border border-primary/40 text-[11px]">
+                                      [{c.citation_index}]
+                                    </span>
+                                    <a
+                                      href={c.pdf_url || `https://arxiv.org/abs/${c.paper_id}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="font-semibold text-on-surface hover:text-primary transition-colors truncate max-w-md inline-flex items-center gap-1 cursor-pointer"
+                                      title="Open source paper PDF"
+                                    >
+                                      <span>{c.paper_title}</span>
+                                      <span className="material-symbols-outlined text-[13px] opacity-70">
+                                        open_in_new
+                                      </span>
+                                    </a>
+                                  </div>
+
+                                  <p className="text-[11px] text-outline font-code-sm">
+                                    {c.authors} {c.year ? `(${c.year})` : ""}
+                                  </p>
+
+                                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                    <span className="px-2 py-0.5 rounded bg-surface-container-high border border-outline-variant/30 text-on-surface-variant font-code-sm text-[11px]">
+                                      {c.section_title}
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded bg-primary/10 border border-primary/30 text-primary font-code-sm text-[11px] font-medium">
+                                      {c.page_label}
+                                    </span>
+                                    {c.is_visual && (
+                                      <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-code-sm text-[11px]">
+                                        Visual Analysis: {c.figure_number || "Figure"}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {c.claim_supported && (
+                                    <p className="text-on-surface-variant text-[11px] italic pt-1 leading-relaxed border-t border-outline-variant/10 mt-1">
+                                      &quot;{c.claim_supported}&quot;
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="sm:self-center shrink-0">
+                                  <a
+                                    href={c.pdf_url || `https://arxiv.org/abs/${c.paper_id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface hover:text-primary transition-all text-[11px] font-medium"
+                                  >
+                                    <span>View PDF</span>
+                                    <span className="material-symbols-outlined text-[14px]">
+                                      picture_as_pdf
+                                    </span>
+                                  </a>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
               }))}
 
-              {/* Dynamic Real-time Searching & Abstract Screening Indicator */}
+              {/* Dynamic Real-time Searching & Abstract Screening Indicator (Online Literature Discovery) */}
               {isSearching && (
                 <div className="flex items-start gap-3 max-w-4xl mr-auto animate-fadeIn">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
@@ -1643,7 +1873,7 @@ export default function ProjectResearchChatbot({
                       </span>
                       <span className="text-code-sm text-outline text-[11px] flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                        Active Pipeline
+                        Preprint Discovery
                       </span>
                     </div>
 
@@ -1666,6 +1896,57 @@ export default function ProjectResearchChatbot({
                             step === searchStage
                               ? "w-7 bg-primary"
                               : step < searchStage
+                              ? "w-2.5 bg-primary/50"
+                              : "w-2.5 bg-surface-container-high"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Distinct Real-time Grounded Q&A / Synthesis Progress Indicator */}
+              {isSynthesizing && (
+                <div className="flex items-start gap-3 max-w-4xl mr-auto animate-fadeIn">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
+                    <span className="material-symbols-outlined text-[18px] animate-spin">
+                      psychology
+                    </span>
+                  </div>
+                  <div className="bg-surface-container-low border border-primary/30 rounded-2xl rounded-tl-none p-4 shadow-md text-on-surface flex-1 max-w-xl">
+                    <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-outline-variant/20">
+                      <span className="text-[11px] font-code-sm font-bold uppercase tracking-wider text-primary px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[14px]">
+                          {QA_STAGES[synthesizingStage].icon}
+                        </span>
+                        {QA_STAGES[synthesizingStage].badge}
+                      </span>
+                      <span className="text-code-sm text-outline text-[11px] flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+                        Grounded Synthesis
+                      </span>
+                    </div>
+
+                    <p className="font-semibold text-body-md text-on-surface flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary text-[18px] animate-spin shrink-0">
+                        autorenew
+                      </span>
+                      <span>{QA_STAGES[synthesizingStage].title}</span>
+                    </p>
+                    <p className="text-xs text-on-surface-variant mt-1 pl-6.5 leading-relaxed">
+                      {QA_STAGES[synthesizingStage].subtitle}
+                    </p>
+
+                    {/* Progress Step Dots */}
+                    <div className="flex items-center gap-1.5 mt-3 pl-6.5">
+                      {[0, 1, 2, 3].map((step) => (
+                        <div
+                          key={step}
+                          className={`h-1.5 rounded-full transition-all duration-500 ${
+                            step === synthesizingStage
+                              ? "w-7 bg-primary"
+                              : step < synthesizingStage
                               ? "w-2.5 bg-primary/50"
                               : "w-2.5 bg-surface-container-high"
                           }`}

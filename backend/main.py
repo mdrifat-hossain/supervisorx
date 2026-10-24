@@ -3,7 +3,7 @@ import hmac
 import shutil
 import tempfile
 from urllib.parse import quote, urlsplit, urlunsplit
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Dict, Any
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
@@ -479,3 +479,173 @@ def delete_project_paper(
         conn.commit()
 
     return {"success": True, "deleted_paper_id": paper_id}
+
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    history: Optional[List[Dict[str, Any]]] = None
+    limit: Optional[int] = 10
+    start_year: Optional[int] = None
+    end_year: Optional[int] = None
+    min_score: Optional[int] = 7
+    exclude_ids: Optional[Union[List[str], str]] = None
+    api_key: Optional[str] = None
+
+
+@app.post("/api/projects/{project_id}/chat")
+def project_chat_endpoint(
+    project_id: str,
+    req: ChatRequest,
+    x_internal_api_key: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    """
+    Unified research chatbot endpoint:
+    1. Enforces project access and credentials.
+    2. Routes user query via LangChain LLM intent classifier (search vs QA vs compare vs summarize).
+    3. Executes the target workflow:
+       - 'paper_search': Searches preprint literature and ranks candidates.
+       - 'paper_qa': Grounded pgvector RAG across analyzed papers with traceable citations.
+       - 'compare_papers': Evidence-based structured comparison across analyzed papers.
+       - 'summarize_papers': Multi-section structured summary with citations.
+       - 'general_chat' / 'clarification_needed': Conversational support.
+    """
+    from services.intent_router import route_user_intent
+    from services.rag_service import answer_research_question
+    from services.paper_comparator import compare_analyzed_papers
+    from services.paper_summarizer import summarize_analyzed_papers
+
+    _require_project_access(x_user_id, x_internal_api_key, project_id)
+
+    raw_query = req.message.strip()
+    if not raw_query:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    try:
+        # Step 1: LLM Intent Routing
+        router_res = route_user_intent(
+            query=raw_query,
+            recent_history=req.history,
+            api_key=req.api_key,
+        )
+        intent = router_res.intent
+
+        # Step 2: Dispatch to appropriate workflow
+        if intent == "paper_search":
+            # Formulate query and run academic screening
+            search_query = router_res.extracted_query or raw_query
+            search_result = iterative_search_and_screen(
+                research_objective=search_query,
+                target_count=req.limit or 10,
+                start_year=req.start_year,
+                end_year=req.end_year,
+                min_score=req.min_score or 7,
+                api_key=req.api_key,
+                exclude_ids=req.exclude_ids,
+            )
+            return {
+                "intent": "paper_search",
+                "success": True,
+                "is_papers_response": True,
+                "papers": search_result.get("papers", []),
+                "screened_ids": search_result.get("screened_ids", []),
+                "candidates_screened": search_result.get("candidates_screened", 0),
+                "total_verified": len(search_result.get("papers", [])),
+                "message": search_result.get("message"),
+                "extracted_query": search_query,
+            }
+
+        elif intent == "compare_papers":
+            comp_res = compare_analyzed_papers(
+                project_id=project_id,
+                query=raw_query,
+                target_paper_mentions=router_res.target_papers,
+                dimensions=router_res.comparison_dimensions,
+                api_key=req.api_key,
+            )
+            return {
+                "intent": "compare_papers",
+                "success": comp_res.success,
+                "is_papers_response": False,
+                "answer": comp_res.answer,
+                "citations": [c.model_dump() for c in comp_res.citations],
+                "compared_papers": comp_res.compared_papers,
+                "has_sufficient_evidence": comp_res.has_sufficient_evidence,
+            }
+
+        elif intent == "summarize_papers":
+            sum_res = summarize_analyzed_papers(
+                project_id=project_id,
+                query=raw_query,
+                target_paper_mentions=router_res.target_papers,
+                summary_focus=router_res.summary_focus,
+                api_key=req.api_key,
+            )
+            return {
+                "intent": "summarize_papers",
+                "success": sum_res.success,
+                "is_papers_response": False,
+                "answer": sum_res.answer,
+                "citations": [c.model_dump() for c in sum_res.citations],
+                "summarized_papers": sum_res.summarized_papers,
+                "has_sufficient_evidence": sum_res.has_sufficient_evidence,
+            }
+
+        elif intent == "clarification_needed":
+            return {
+                "intent": "clarification_needed",
+                "success": True,
+                "is_papers_response": False,
+                "answer": router_res.clarification_prompt or "Could you clarify which specific research paper or scientific concept you would like me to examine?",
+                "citations": [],
+            }
+
+        elif intent == "general_chat":
+            greeting = (
+                "Hello! I am **SupervisorX**, your evidence-grounded research assistant.\n\n"
+                "I can assist you with your research in multiple ways in this conversation:\n"
+                "1. **Discover Literature:** Find relevant academic papers and preprints (e.g. *\"Find papers on attention mechanisms\"*).\n"
+                "2. **Evidence-Based Q&A:** Answer technical questions grounded in your analyzed papers with exact section and page citations (e.g. *\"How does dynamic gating achieve linear time complexity?\"*).\n"
+                "3. **Paper Comparison:** Compare architectures, datasets, and metrics across analyzed papers (e.g. *\"Compare Paper 1 and Paper 2\"*).\n"
+                "4. **Structured Summaries:** Generate structured methodology and findings summaries for any analyzed paper (e.g. *\"Summarize the GSA paper\"*).\n\n"
+                "How can I help you today?"
+            )
+            return {
+                "intent": "general_chat",
+                "success": True,
+                "is_papers_response": False,
+                "answer": greeting,
+                "citations": [],
+            }
+
+        else:
+            # Default to grounded Q&A
+            qa_res = answer_research_question(
+                project_id=project_id,
+                query=router_res.extracted_query or raw_query,
+                recent_history=req.history,
+                target_paper_ids=router_res.target_papers,
+                api_key=req.api_key,
+            )
+            return {
+                "intent": "paper_qa",
+                "success": qa_res.success,
+                "is_papers_response": False,
+                "answer": qa_res.answer,
+                "citations": [c.model_dump() for c in qa_res.citations],
+                "eligible_papers_count": qa_res.eligible_papers_count,
+                "papers_used": qa_res.papers_used,
+                "has_sufficient_evidence": qa_res.has_sufficient_evidence,
+            }
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return {
+            "intent": "general_chat",
+            "success": False,
+            "is_papers_response": False,
+            "answer": f"**Research Assistant Service Notice:** {str(exc)}",
+            "citations": [],
+        }
+

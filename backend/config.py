@@ -7,6 +7,9 @@ class Settings(BaseModel):
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "nvidia/nemotron-3-embed-1b:free")
     VISION_MODEL: str = os.getenv("VISION_MODEL", "nvidia/nemotron-3.5-super-vl:free")
     TEXT_MODEL: str = os.getenv("TEXT_MODEL", "nvidia/nemotron-3.5-lightning:free")
+    CHAT_MODEL: str = os.getenv("CHAT_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
+    CHAT_FALLBACK_MODEL: str = os.getenv("CHAT_FALLBACK_MODEL", "nvidia/nemotron-3.5-lightning:free")
+    QUERY_FORMULATION_MODEL: str = os.getenv("QUERY_FORMULATION_MODEL", "nvidia/nemotron-3.5-lightning:free")
     STORAGE_DIR: str = os.getenv("STORAGE_DIR", "/storage")
     PAPERS_DIR: str = os.getenv(
         "PAPERS_DIR",
