@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from config import settings
+from services.chatbot_llm import build_chatbot_llm
 
 logger = logging.getLogger("intent_router")
 
@@ -77,12 +78,9 @@ CRITICAL INSTRUCTIONS:
 
 
 def _get_langchain_model(model_name: Optional[str] = None, api_key: Optional[str] = None) -> ChatOpenAI:
-    key = api_key or settings.OPENROUTER_API_KEY
-    chosen_model = model_name or settings.CHAT_MODEL or "nvidia/nemotron-3-ultra-550b-a55b:free"
-    return ChatOpenAI(
-        model=chosen_model,
-        openai_api_key=key,
-        openai_api_base=settings.OPENROUTER_BASE_URL,
+    return build_chatbot_llm(
+        model_name=model_name,
+        api_key=api_key,
         temperature=0.0,
         max_tokens=600,
         request_timeout=15.0,
@@ -164,8 +162,7 @@ def route_user_intent(
     api_key: Optional[str] = None
 ) -> RouterResult:
     """
-    Classifies user intent using LangChain ChatOpenAI with nvidia/nemotron-3-ultra-550b-a55b:free,
-    with automatic model fallback to nvidia/nemotron-3.5-lightning:free and heuristic recovery.
+    Classifies user intent using Gemini, with the existing OpenRouter model as fallback and heuristic recovery.
     """
     clean_prompt = query.strip()
     if not clean_prompt:
@@ -198,7 +195,7 @@ def route_user_intent(
     ]
 
     candidate_models = [
-        settings.CHAT_MODEL or "nvidia/nemotron-3-ultra-550b-a55b:free",
+        settings.CHATBOT_MODEL,
         settings.CHAT_FALLBACK_MODEL or "nvidia/nemotron-3.5-lightning:free",
     ]
 

@@ -4,9 +4,9 @@ import logging
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from config import settings
+from services.chatbot_llm import build_chatbot_llm
 from services.rag_service import (
     get_eligible_analyzed_papers,
     retrieve_relevant_evidence,
@@ -56,12 +56,31 @@ def summarize_analyzed_papers(
         )
 
     lower_q = query.lower()
-    if any(w in lower_q for w in ["all papers", "all the papers", "every paper", "each paper", "all", "methodologies"]):
+    if re.search(r"\b(?:all|every|each)\s+(?:the\s+)?papers?\b", lower_q):
         target_papers = eligible_papers
     else:
-        target_papers = resolve_target_papers(eligible_papers, target_paper_mentions or [])
-        if not target_paper_mentions and eligible_papers:
+        mentions = list(target_paper_mentions or []) + [query]
+        target_papers = resolve_target_papers(eligible_papers, mentions)
+        explicit_scope = bool(target_paper_mentions) or bool(
+            re.search(r"(?:from|in|about|regarding)\s+(?:this\s+)?[\"'“”].{4,}[\"'“”]", query, re.IGNORECASE)
+        )
+        if not target_papers and explicit_scope:
+            return SummaryResult(
+                success=True,
+                answer="I couldn’t match the paper you named to an analyzed paper in this project. Please check the title or choose one of the analyzed papers.",
+                has_sufficient_evidence=False,
+                notice="Requested paper could not be resolved",
+            )
+        if not target_papers and eligible_papers:
             target_papers = [eligible_papers[0]]
+
+    if not settings.GEMINI_API_KEY.strip():
+        return SummaryResult(
+            success=False,
+            answer="Gemini summary generation is not configured. Set GEMINI_API_KEY in the backend environment and restart the backend.",
+            has_sufficient_evidence=False,
+            notice="Gemini API key is missing",
+        )
 
     focus_query = query
     if summary_focus:
@@ -81,7 +100,7 @@ def summarize_analyzed_papers(
     paper_evidence_map: Dict[str, List[Dict[str, Any]]] = {}
     citation_counter = 1
 
-    chunk_limit_per_paper = 3 if len(target_papers) > 2 else 6
+    chunk_limit_per_paper = 6 if len(target_papers) > 2 else 10
 
     for p in target_papers:
         pid = p["paper_id"]
@@ -147,7 +166,9 @@ def summarize_analyzed_papers(
         "GROUNDING REQUIREMENTS:\n"
         "- Attach inline citations [1], [2] to every specific claim, result, and methodology detail.\n"
         "- If multiple papers are summarized, summarize each paper separately before presenting any synthesis.\n"
-        "- Do not guess or invent metrics. If something is not reported, state 'Not reported in analyzed text'.\n"
+        "- For limitations, distinguish author-stated limitations from potential limitations inferred from the study. Never label an inference as an author statement.\n"
+        "- Do not guess or invent metrics. If the supplied evidence does not establish a requested fact, say so.\n"
+        "- Write complete sentences; do not truncate with ellipses.\n"
         "- Deliver a clean, professional markdown response."
     )
 
@@ -162,83 +183,45 @@ def summarize_analyzed_papers(
         HumanMessage(content=user_prompt),
     ]
 
-    candidate_models = [
-        settings.CHAT_MODEL or "nvidia/nemotron-3-ultra-550b-a55b:free",
-        settings.CHAT_FALLBACK_MODEL or "nvidia/nemotron-3.5-lightning:free",
-    ]
-
-    key = api_key or settings.OPENROUTER_API_KEY
     answer_text = ""
-    rate_limited = False
-
-    for model_name in candidate_models:
-        try:
-            llm = ChatOpenAI(
-                model=model_name,
-                openai_api_key=key,
-                openai_api_base=settings.OPENROUTER_BASE_URL,
-                temperature=0.15,
-                max_tokens=1800,
-                request_timeout=35.0,
-            )
-            resp = llm.invoke(messages)
-            answer_text = resp.content.strip()
-            if answer_text:
-                break
-        except Exception as e:
-            err_str = str(e)
-            if "429" in err_str or "Rate limit" in err_str or "free-models-per-day" in err_str:
-                rate_limited = True
-            logger.warning(f"Summary generation failed with model {model_name}: {e}")
-            continue
-
-    if not answer_text:
-        # Fallback to high-quality deterministic structured synthesis directly from verified database evidence
-        lines = [
-            f"### Key Methodologies and Structural Synthesis Across Analyzed Papers\n",
-            f"Below is the evidence-grounded summary of the core methodologies and findings extracted from the **{len(target_papers)} analyzed papers** in your project library.\n",
-        ]
-        if rate_limited:
-            lines.append("*(Note: OpenRouter daily model limit reached; synthesized directly from verified database extractions and pgvector index)*\n")
-
-        for idx, p in enumerate(target_papers, 1):
-            pid = p["paper_id"]
-            p_evs = paper_evidence_map.get(pid, [])
-            p_title = p["title"]
-            authors = p["authors"] or "Unknown Authors"
-            year = p["year"] or "N/A"
-
-            lines.append(f"#### {idx}. **{p_title}**")
-            lines.append(f"**Authors:** {authors} ({year}) | [View PDF Document]({p['pdf_url']})\n")
-
-            if p_evs:
-                # Group chunks by section
-                method_chunks = [c for c in p_evs if any(k in (c.get("section_title") or "").lower() for k in ["method", "approach", "architect", "model", "technique"])]
-                intro_chunks = [c for c in p_evs if any(k in (c.get("section_title") or "").lower() for k in ["abstract", "intro", "problem", "overview"])]
-                other_chunks = [c for c in p_evs if c not in method_chunks and c not in intro_chunks]
-
-                # 1. Problem / Objective
-                obj_chunk = intro_chunks[0] if intro_chunks else (other_chunks[0] if other_chunks else p_evs[0])
-                c_idx = obj_chunk.get("_citation_index", 1)
-                pg_info = f"PDF Page {obj_chunk['page_start']}" if obj_chunk.get("page_start") else "Verified Index"
-                lines.append(f"- **Core Problem & Objective:** {obj_chunk['content_text'][:260].strip().replace(chr(10), ' ')}... [{c_idx}] ({pg_info})")
-
-                # 2. Methodology & Architecture
-                meth_chunk = method_chunks[0] if method_chunks else (other_chunks[1] if len(other_chunks) > 1 else (p_evs[1] if len(p_evs) > 1 else obj_chunk))
-                c_idx2 = meth_chunk.get("_citation_index", c_idx)
-                pg_info2 = f"PDF Page {meth_chunk['page_start']}" if meth_chunk.get("page_start") else "Verified Index"
-                sec_name = meth_chunk.get("section_title") or "Methodology"
-                lines.append(f"- **Methodology & Architecture:** In Section *\"{sec_name}\"*, the authors introduce: {meth_chunk['content_text'][:280].strip().replace(chr(10), ' ')}... [{c_idx2}] ({pg_info2})")
-
-                # 3. Key Findings / Contributions
-                findings_chunk = other_chunks[0] if other_chunks else (p_evs[-1] if len(p_evs) > 2 else meth_chunk)
-                c_idx3 = findings_chunk.get("_citation_index", c_idx2)
-                pg_info3 = f"PDF Page {findings_chunk['page_start']}" if findings_chunk.get("page_start") else "Verified Index"
-                lines.append(f"- **Key Findings & Contributions:** Empirical evaluation demonstrates: {findings_chunk['content_text'][:240].strip().replace(chr(10), ' ')}... [{c_idx3}] ({pg_info3})\n")
-            else:
-                lines.append(f"- **Summary Status:** Extracted text structure is verified in database. Detailed section synthesis available.\n")
-
-        answer_text = "\n".join(lines)
+    incomplete_answer = False
+    response_received = False
+    try:
+        llm = build_chatbot_llm(
+            model_name=settings.CHATBOT_MODEL,
+            temperature=0.15,
+            max_tokens=3500,
+            request_timeout=35.0,
+        )
+        resp = llm.invoke(messages)
+        response_received = True
+        answer_text = (resp.content or "").strip()
+        finish_reason = (getattr(resp, "response_metadata", {}) or {}).get("finish_reason")
+        if finish_reason in {"length", "max_tokens"} or re.search(r"(?:\.{3}|…)\s*$", answer_text):
+            incomplete_answer = True
+            raise ValueError("Gemini returned an incomplete summary")
+        if not answer_text:
+            raise ValueError("Gemini returned an empty summary")
+    except Exception as e:
+        logger.warning("Gemini summary generation failed (%s)", type(e).__name__)
+        err_str = str(e).lower()
+        if any(marker in err_str for marker in ("429", "rate limit", "resource_exhausted", "quota")):
+            reason = "Gemini returned a quota or rate-limit error. Check your Google AI Studio quota or try again later."
+            notice = "Gemini quota or rate limit"
+        elif incomplete_answer or (response_received and not answer_text):
+            reason = "Gemini did not return a complete summary. Please try again later."
+            notice = "Gemini summary unavailable"
+        else:
+            reason = "Gemini summary generation failed. Check the backend configuration and try again."
+            notice = "Gemini provider error"
+        return SummaryResult(
+            success=False,
+            answer=reason,
+            citations=[],
+            summarized_papers=[],
+            has_sufficient_evidence=False,
+            notice=notice,
+        )
 
     referenced_indices = set(int(m) for m in re.findall(r"\[(\d+)\]", answer_text))
     active_citations = [c for c in citation_catalog if c.citation_index in referenced_indices]

@@ -90,6 +90,7 @@ class SearchRequest(BaseModel):
     min_score: Optional[int] = 7
     api_key: Optional[str] = None
     exclude_ids: Optional[Union[List[str], str]] = None
+    sources: Optional[List[str]] = None
 
 
 @app.get("/")
@@ -111,12 +112,14 @@ def search_arxiv_papers(
     min_score: int = Query(7, ge=1, le=10, description="Minimum relevance threshold (1-10)"),
     api_key: Optional[str] = Query(None, description="Optional OpenRouter API key"),
     exclude_ids: Optional[str] = Query(None, description="Comma-separated IDs of papers to exclude/ignore"),
+    sources: Optional[str] = Query(None, description="Comma-separated sources: arxiv, openalex"),
 ):
     """
-    Search arXiv preprints and iteratively screen abstracts using OpenRouter LLM
+    Search arXiv/OpenAlex preprints and iteratively screen abstracts using OpenRouter LLM
     against the user's research objective. Returns only papers meeting the relevance threshold.
     """
     try:
+        source_list = [s.strip().lower() for s in sources.split(",") if s.strip()] if sources else None
         return iterative_search_and_screen(
             research_objective=query,
             target_count=limit,
@@ -125,6 +128,7 @@ def search_arxiv_papers(
             min_score=min_score,
             api_key=api_key,
             exclude_ids=exclude_ids,
+            sources=source_list,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -135,7 +139,7 @@ def search_endpoint(req: SearchRequest):
     """
     Unified research discovery endpoint:
     1. Understands user research objective and generates targeted queries.
-    2. Fetches candidate batches from arXiv.
+    2. Fetches candidate batches from configured sources (arXiv and/or OpenAlex).
     3. Screens titles and abstracts using OpenRouter LLM against relevance criteria.
     4. Iterates until target count is reached or candidate budget exhausted.
     5. Returns transparent relevance scores and explanations for every paper.
@@ -149,6 +153,7 @@ def search_endpoint(req: SearchRequest):
             min_score=req.min_score or 7,
             api_key=req.api_key,
             exclude_ids=req.exclude_ids,
+            sources=req.sources,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -491,6 +496,7 @@ class ChatRequest(BaseModel):
     min_score: Optional[int] = 7
     exclude_ids: Optional[Union[List[str], str]] = None
     api_key: Optional[str] = None
+    sources: Optional[List[str]] = None
 
 
 @app.post("/api/projects/{project_id}/chat")
@@ -543,6 +549,7 @@ def project_chat_endpoint(
                 min_score=req.min_score or 7,
                 api_key=req.api_key,
                 exclude_ids=req.exclude_ids,
+                sources=req.sources,
             )
             return {
                 "intent": "paper_search",
@@ -554,6 +561,7 @@ def project_chat_endpoint(
                 "total_verified": len(search_result.get("papers", [])),
                 "message": search_result.get("message"),
                 "extracted_query": search_query,
+                "sources_used": search_result.get("sources_used", []),
             }
 
         elif intent == "compare_papers":

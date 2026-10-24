@@ -18,6 +18,42 @@ CAPTION_REGEX = re.compile(
 def _compute_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
+def detect_section_heading(block_text: str) -> Optional[Tuple[str, str]]:
+    """
+    Detects if a text block starts with or constitutes an academic section heading.
+    Returns (heading_text, remaining_body_text) if found, else None.
+    """
+    lines = [l.strip() for l in block_text.split("\n") if l.strip()]
+    if not lines:
+        return None
+
+    # Check case 1: Line 1 is section number (e.g. '3' or '3.1' or 'IV') and Line 2 is title
+    if len(lines) >= 2 and re.match(r"^(?:(?:\d+|[IVXLCDM]+)\.?)+\s*$", lines[0], re.IGNORECASE) and len(lines[1]) < 80 and not lines[1].endswith("."):
+        if not any(c in lines[1] for c in ["=", "<", ">", "+", "∑", "∫", "∈", "×"]):
+            heading = f"{lines[0]} {lines[1]}"
+            remaining = "\n".join(lines[2:]).strip()
+            return heading, remaining
+
+    # Check case 2: Numbered heading on single line (e.g. '3 Gated Sparse Attention' or '1. Introduction')
+    m = re.match(r"^(?:Section\s+)?(?:(?:\d+|[IVXLCDM]+)\.?)+\s+([A-Z][A-Za-z0-9\s\-_,:]{2,75})$", lines[0], re.IGNORECASE)
+    if m and not lines[0].endswith(".") and not any(c in lines[0] for c in ["=", "<", ">", "+", "∑", "∫", "∈", "×"]):
+        heading = lines[0]
+        remaining = "\n".join(lines[1:]).strip()
+        return heading, remaining
+
+    # Check case 3: Keyword headings (Abstract, Introduction, Methodology, etc.)
+    kw_regex = re.compile(
+        r"^(?:(?:\d+\.?)+\s+)?(Abstract|Introduction|Related\s+Work|Background|Methodology|Method|Proposed\s+Method|Architecture|System\s+Overview|Experiments|Experimental\s+Setup|Results|Discussion|Analysis|Evaluation|Conclusion|Conclusions|Limitations|Future\s+Work|Ablation\s+Study|References)(?:\s*:|\b)",
+        re.IGNORECASE
+    )
+    m_kw = kw_regex.match(lines[0])
+    if m_kw and len(lines[0]) < 80:
+        heading = lines[0]
+        remaining = "\n".join(lines[1:]).strip()
+        return heading, remaining
+
+    return None
+
 def extract_pdf_structure_and_chunks(
     pdf_bytes: bytes,
     paper_id: str,
@@ -60,25 +96,21 @@ def extract_pdf_structure_and_chunks(
                     continue
 
                 # Check if this text block is a section heading
-                first_line = block_text.split("\n")[0].strip()
-                heading_match = SECTION_HEADING_REGEX.match(first_line)
-                if heading_match and len(first_line) < 100:
-                    current_section = first_line
+                heading_info = detect_section_heading(block_text)
+                if heading_info:
+                    current_section, remaining_text = heading_info
                     current_section_path = current_section
-                    # If block has more than just heading, keep the rest as body
-                    lines = block_text.split("\n")
-                    if len(lines) > 1:
-                        remaining_text = "\n".join(lines[1:]).strip()
-                        if remaining_text:
-                            structured_blocks.append({
-                                "page": page_num,
-                                "section": current_section,
-                                "section_path": current_section_path,
-                                "text": remaining_text,
-                                "bbox": (block[0], block[1], block[2], block[3]),
-                            })
+                    if remaining_text:
+                        structured_blocks.append({
+                            "page": page_num,
+                            "section": current_section,
+                            "section_path": current_section_path,
+                            "text": remaining_text,
+                            "bbox": (block[0], block[1], block[2], block[3]),
+                        })
                     continue
 
+                first_line = block_text.split("\n")[0].strip()
                 # Check if this text block is a figure or table caption
                 caption_match = CAPTION_REGEX.match(first_line)
                 if caption_match:

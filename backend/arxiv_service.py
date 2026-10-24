@@ -292,6 +292,7 @@ def iterative_search_and_screen(
     batch_size: int = 15,
     api_key: Optional[str] = None,
     exclude_ids: Optional[Union[List[str], str]] = None,
+    sources: Optional[Union[List[str], str]] = None,
 ) -> Dict[str, Any]:
     """
     Executes iterative batch candidate retrieval and LLM abstract relevance screening.
@@ -313,7 +314,32 @@ def iterative_search_and_screen(
             "message": "Empty research objective provided.",
             "formulated_query": "",
             "screened_ids": [],
+            "sources_used": [],
         }
+
+    # Parse and validate selected sources (arXiv and/or OpenAlex)
+    active_sources: Set[str] = set()
+    if sources:
+        if isinstance(sources, str):
+            raw_sources = [s.strip().lower() for s in sources.split(",") if s.strip()]
+        else:
+            raw_sources = [str(s).strip().lower() for s in sources if str(s).strip()]
+        active_sources = set(raw_sources)
+    else:
+        active_sources = {"arxiv", "openalex"}
+
+    use_arxiv = "arxiv" in active_sources
+    use_openalex = "openalex" in active_sources
+    if not use_arxiv and not use_openalex:
+        use_arxiv = True
+        use_openalex = True
+
+    source_labels = []
+    if use_arxiv:
+        source_labels.append("arXiv")
+    if use_openalex:
+        source_labels.append("OpenAlex")
+    sources_text = " & ".join(source_labels)
 
     # Step 1: Query Formulation via LLM / Clean Heuristic
     formulated_query = generate_academic_query(research_objective, api_key=api_key)
@@ -349,19 +375,45 @@ def iterative_search_and_screen(
         remaining_budget = effective_budget - total_screened
         current_batch_size = min(batch_size, remaining_budget)
 
-        # Retrieve candidates from arXiv first
-        raw_candidates = fetch_arxiv_candidates(
-            query=formulated_query,
-            offset=offset,
-            batch_size=current_batch_size,
-            start_year=start_year,
-            end_year=end_year,
-        )
+        raw_candidates = []
 
-        offset += len(raw_candidates)
+        if use_arxiv and use_openalex:
+            # Query both arXiv and OpenAlex for balanced discovery
+            half_batch = max(current_batch_size // 2, 5)
+            arxiv_candidates = fetch_arxiv_candidates(
+                query=formulated_query,
+                offset=offset,
+                batch_size=half_batch,
+                start_year=start_year,
+                end_year=end_year,
+            )
+            offset += len(arxiv_candidates)
+            raw_candidates.extend(arxiv_candidates)
 
-        # Provider fallback / expansion: if arXiv returned fewer candidates or timed out, query OpenAlex
-        if len(raw_candidates) < 5:
+            openalex_candidates = fetch_openalex_candidates(
+                query=formulated_query,
+                page=openalex_page,
+                batch_size=half_batch,
+                start_year=start_year,
+                end_year=end_year,
+            )
+            openalex_page += 1
+            raw_candidates.extend(openalex_candidates)
+
+        elif use_arxiv:
+            # Query ONLY arXiv
+            arxiv_candidates = fetch_arxiv_candidates(
+                query=formulated_query,
+                offset=offset,
+                batch_size=current_batch_size,
+                start_year=start_year,
+                end_year=end_year,
+            )
+            offset += len(arxiv_candidates)
+            raw_candidates.extend(arxiv_candidates)
+
+        elif use_openalex:
+            # Query ONLY OpenAlex
             openalex_candidates = fetch_openalex_candidates(
                 query=formulated_query,
                 page=openalex_page,
@@ -436,19 +488,19 @@ def iterative_search_and_screen(
 
     if len(selected_papers) >= target_count:
         message = (
-            f"Read and screened {total_screened} candidate paper abstracts across arXiv and academic literature. "
+            f"Read and screened {total_screened} candidate paper abstracts across {sources_text}. "
             f"Evaluated {len(qualifying_papers)} papers meeting your relevance requirements (score ≥{min_score}/10) "
             f"and selected the top {len(selected_papers)} highest-ranking matches for your objective."
         )
     elif len(selected_papers) > 0:
         message = (
-            f"Screened {total_screened} paper abstracts and found {len(selected_papers)} of {target_count} target papers "
+            f"Screened {total_screened} paper abstracts across {sources_text} and found {len(selected_papers)} of {target_count} target papers "
             f"that passed the strict relevance threshold (≥{min_score}/10). "
             f"No below-threshold papers were padded."
         )
     else:
         message = (
-            f"Screened {total_screened} candidate paper abstracts, but none met the minimum relevance "
+            f"Screened {total_screened} candidate paper abstracts across {sources_text}, but none met the minimum relevance "
             f"threshold of {min_score}/10 for your objective. Try broadening your keywords."
         )
 
@@ -465,6 +517,7 @@ def iterative_search_and_screen(
         "papers": selected_papers,
         "count": len(selected_papers),
         "screened_ids": list(seen_ids),
+        "sources_used": source_labels,
     }
 
 
@@ -476,6 +529,7 @@ def search_papers(
     min_score: int = 7,
     api_key: Optional[str] = None,
     exclude_ids: Optional[Union[List[str], str]] = None,
+    sources: Optional[Union[List[str], str]] = None,
 ) -> List[Dict]:
     """
     Public search API that delegates to iterative_search_and_screen and returns qualifying papers.
@@ -488,6 +542,7 @@ def search_papers(
         min_score=min_score,
         api_key=api_key,
         exclude_ids=exclude_ids,
+        sources=sources,
     )
     return res.get("papers", [])
 

@@ -4,9 +4,9 @@ import logging
 from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from config import settings
+from services.chatbot_llm import build_chatbot_llm
 from services.rag_service import (
     get_eligible_analyzed_papers,
     retrieve_relevant_evidence,
@@ -39,18 +39,17 @@ def resolve_target_papers(
         return []
 
     if not user_mentions:
-        # Default to the first two analyzed papers
-        return eligible_papers[:2]
+        return []
 
     for mention in user_mentions:
-        if any(term in mention.lower() for term in ["all", "every", "both", "all papers"]):
+        if re.search(r"\b(?:all|every|each)\s+(?:the\s+)?papers?\b|\bboth\s+papers\b", mention.lower()):
             return eligible_papers
 
     resolved: List[Dict[str, Any]] = []
     seen_ids = set()
 
     for mention in user_mentions:
-        m_clean = mention.strip().lower()
+        m_clean = re.sub(r"[^a-z0-9]+", " ", mention.lower()).strip()
 
         # Check for relative index e.g. "paper 1", "paper 2", "first paper", "second paper"
         idx_match = re.search(r"(?:paper\s*#?|item\s*#?)(\d+)", m_clean)
@@ -68,7 +67,7 @@ def resolve_target_papers(
         }
         matched_word_idx = None
         for w, i in word_indices.items():
-            if w in m_clean:
+            if re.search(rf"\b(?:the\s+)?{w}\s+paper\b|\bpaper\s+{w}\b", m_clean):
                 matched_word_idx = i
                 break
         if matched_word_idx is not None and matched_word_idx < len(eligible_papers):
@@ -78,26 +77,16 @@ def resolve_target_papers(
                 seen_ids.add(p["paper_id"])
             continue
 
-        # Check paper_id exact or substring
-        found = False
+        # Resolve IDs and titles using canonical analyzed-paper metadata.
         for p in eligible_papers:
-            pid = p["paper_id"].lower()
-            title = p["title"].lower()
-            if pid in m_clean or m_clean in pid or m_clean in title:
+            pid = str(p["paper_id"]).lower()
+            title = re.sub(r"[^a-z0-9]+", " ", str(p["title"]).lower()).strip()
+            if pid in mention.lower() or (title and (title in m_clean or (12 <= len(m_clean) <= 80 and m_clean in title))):
                 if p["paper_id"] not in seen_ids:
                     resolved.append(p)
                     seen_ids.add(p["paper_id"])
-                found = True
                 break
-
-    # If only 1 resolved but eligible papers has more, pick the second one too
-    if len(resolved) == 1 and len(eligible_papers) >= 2:
-        for p in eligible_papers:
-            if p["paper_id"] not in seen_ids:
-                resolved.append(p)
-                break
-
-    return resolved if resolved else eligible_papers[:2]
+    return resolved
 
 
 def compare_analyzed_papers(
@@ -247,7 +236,7 @@ def compare_analyzed_papers(
     ]
 
     candidate_models = [
-        settings.CHAT_MODEL or "nvidia/nemotron-3-ultra-550b-a55b:free",
+        settings.CHATBOT_MODEL,
         settings.CHAT_FALLBACK_MODEL or "nvidia/nemotron-3.5-lightning:free",
     ]
 
@@ -257,10 +246,9 @@ def compare_analyzed_papers(
 
     for model_name in candidate_models:
         try:
-            llm = ChatOpenAI(
-                model=model_name,
-                openai_api_key=key,
-                openai_api_base=settings.OPENROUTER_BASE_URL,
+            llm = build_chatbot_llm(
+                model_name=model_name,
+                api_key=key,
                 temperature=0.15,
                 max_tokens=1800,
                 request_timeout=40.0,
@@ -317,7 +305,7 @@ def compare_analyzed_papers(
             "\n#### Narrative Technical Comparison\n",
         ]
         if rate_limited:
-            lines.append("*(Note: OpenRouter daily model limit reached; synthesized comparison table directly from verified database extractions)*\n")
+            lines.append("*(An OpenRouter rate-limit response occurred; this comparison is generated from retrieved evidence.)*\n")
 
         for idx, p in enumerate(target_papers, 1):
             evs = paper_evidence_map.get(p["paper_id"], [])

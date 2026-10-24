@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import ProjectSidebar from "@/components/common/ProjectSidebar";
 import FormattedResearchMarkdown from "./FormattedResearchMarkdown";
@@ -257,15 +257,11 @@ export default function ProjectResearchChatbot({
   const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
   const [renameInputTitle, setRenameInputTitle] = useState("");
 
-  // Source filters
+  // Source filters - verified supported literature sources
   const [isSourcesMenuOpen, setIsSourcesMenuOpen] = useState(false);
   const [sources, setSources] = useState([
-    { name: "ArXiv", sub: "cs.CL, cs.LG", checked: true },
-    { name: "IEEE Xplore", sub: "Journals", checked: true },
-    { name: "OpenReview", sub: "Peer Rev", checked: true },
-    { name: "Semantic Scholar", sub: "200M+", checked: false },
-    { name: "PubMed", sub: "Biomed", checked: false },
-    { name: "ACM Digital Library", sub: "Computing", checked: false },
+    { id: "arxiv", name: "arXiv", sub: "Preprints & CS / Math / AI", checked: true },
+    { id: "openalex", name: "OpenAlex", sub: "Global Open Access Works", checked: true },
   ]);
 
   // Limits dropdown
@@ -286,6 +282,7 @@ export default function ProjectResearchChatbot({
 
   // Messages state (empty by default for new projects; loaded from PostgreSQL)
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [expandedReferenceMessages, setExpandedReferenceMessages] = useState<Record<string, boolean>>({});
 
   // Input state
   const [inputMessage, setInputMessage] = useState("");
@@ -323,32 +320,36 @@ export default function ProjectResearchChatbot({
     return () => clearInterval(interval);
   }, [isSynthesizing]);
 
-  const SEARCH_STAGES = [
-    {
-      title: "Formulating targeted academic search queries...",
-      subtitle: "Extracting core scientific problem statements, methods, and arXiv/OpenAlex query syntax.",
-      icon: "psychology",
-      badge: "Stage 1/4: Query Formulation",
-    },
-    {
-      title: "Retrieving candidate preprints from arXiv & OpenAlex...",
-      subtitle: "Querying research repositories across batches to collect candidate literature.",
-      icon: "manage_search",
-      badge: "Stage 2/4: Candidate Discovery",
-    },
-    {
-      title: "Reading & screening candidate abstracts with AI...",
-      subtitle: "Inspecting research questions, tasks, methodologies, and contributions in each abstract.",
-      icon: "auto_stories",
-      badge: "Stage 3/4: Abstract Screening",
-    },
-    {
-      title: "Scoring, filtering & ranking top relevant literature...",
-      subtitle: "Applying strict 1–10 relevance threshold, rejecting weak keyword overlaps, and compiling evidence.",
-      icon: "verified",
-      badge: "Stage 4/4: Relevance Ranking",
-    },
-  ];
+  const SEARCH_STAGES = useMemo(() => {
+    const active = sources.filter((s) => s.checked).map((s) => s.name);
+    const activeText = active.length > 0 ? active.join(" & ") : "arXiv & OpenAlex";
+    return [
+      {
+        title: "Formulating targeted academic search queries...",
+        subtitle: `Extracting core scientific problem statements, methods, and ${activeText} query syntax.`,
+        icon: "psychology",
+        badge: "Stage 1/4: Query Formulation",
+      },
+      {
+        title: `Retrieving candidate literature from ${activeText}...`,
+        subtitle: `Querying active repository batches (${activeText}) to collect candidate literature.`,
+        icon: "manage_search",
+        badge: "Stage 2/4: Candidate Discovery",
+      },
+      {
+        title: "Reading & screening candidate abstracts with AI...",
+        subtitle: "Inspecting research questions, tasks, methodologies, and contributions in each abstract.",
+        icon: "auto_stories",
+        badge: "Stage 3/4: Abstract Screening",
+      },
+      {
+        title: "Scoring, filtering & ranking top relevant literature...",
+        subtitle: "Applying strict 1–10 relevance threshold, rejecting weak keyword overlaps, and compiling evidence.",
+        icon: "verified",
+        badge: "Stage 4/4: Relevance Ranking",
+      },
+    ];
+  }, [sources]);
 
   const QA_STAGES = [
     {
@@ -403,13 +404,38 @@ export default function ProjectResearchChatbot({
     prevMessagesLength.current = messages.length;
   }, [messages.length]);
 
-  // Handle source toggle
-  const toggleSource = (index: number) => {
+  // Handle source toggle (guaranteeing at least one source remains selected)
+  const toggleSource = (id: string) => {
+    setSources((prev) => {
+      const activeCount = prev.filter((s) => s.checked).length;
+      return prev.map((s) => {
+        if (s.id === id) {
+          if (s.checked && activeCount <= 1) {
+            return s; // Keep at least one source active
+          }
+          return { ...s, checked: !s.checked };
+        }
+        return s;
+      });
+    });
+  };
+
+  const selectAllSources = (selectAll: boolean) => {
     setSources((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, checked: !s.checked } : s))
+      prev.map((s, idx) => ({
+        ...s,
+        checked: selectAll || idx === 0,
+      }))
     );
   };
+
   const activeSourcesCount = sources.filter((s) => s.checked).length;
+  const activeSourcesSummary = useMemo(() => {
+    const active = sources.filter((s) => s.checked);
+    if (active.length === sources.length) return "All Sources (2)";
+    if (active.length === 1) return active[0].name;
+    return `${active.length} Sources`;
+  }, [sources]);
 
   // Load messages for a given session from PostgreSQL
   const loadSessionMessages = async (
@@ -876,6 +902,7 @@ export default function ProjectResearchChatbot({
       allSessionScreenedIds.current.forEach((id) => excludedIdsSet.add(id));
 
       const excludeParam = Array.from(excludedIdsSet).slice(0, 80).join(",");
+      const activeSourceIds = sources.filter((s) => s.checked).map((s) => s.id);
 
       const chatRes = await fetch(`/api/projects/${projectId}/chat`, {
         method: "POST",
@@ -892,6 +919,7 @@ export default function ProjectResearchChatbot({
           endYear: effectiveEndYear,
           minScore: 7,
           excludeIds: excludeParam,
+          sources: activeSourceIds,
         }),
       });
 
@@ -914,12 +942,18 @@ export default function ProjectResearchChatbot({
             downloadedIds.includes(cleanId) ||
             downloadedIds.some((d) => d.includes(cleanId.split("v")[0]));
 
+          const isOa = cleanId.startsWith("oa_");
+          const defaultVenue = isOa ? "Open Access" : `ArXiv:${cleanId.split("v")[0]}`;
+          const defaultEntryUrl = isOa
+            ? `https://openalex.org/${cleanId.replace("oa_", "")}`
+            : `https://arxiv.org/abs/${cleanId}`;
+
           return {
             id: idx + 1,
             paperId: cleanId,
             title: p.title,
-            venue: p.venue || `ArXiv:${cleanId.split("v")[0]}`,
-            venueType: "arxiv" as const,
+            venue: p.venue || defaultVenue,
+            venueType: (p.venue_type || (isOa ? "journal" : "arxiv")) as any,
             authors:
               p.authors && p.authors.length > 0
                 ? `${p.authors.slice(0, 3).join(", ")}${
@@ -931,7 +965,7 @@ export default function ProjectResearchChatbot({
               : "No abstract available.",
             status: isAlreadyDownloaded ? ("downloaded" as const) : ("available" as const),
             pdfUrl: p.pdf_url,
-            entryUrl: p.entry_url || `https://arxiv.org/abs/${cleanId}`,
+            entryUrl: p.entry_url || defaultEntryUrl,
             published: p.published,
             relevanceScore: typeof p.relevance_score === "number" ? p.relevance_score : 8,
             relevanceReason: p.relevance_reason,
@@ -1395,6 +1429,23 @@ export default function ProjectResearchChatbot({
                 </div>
               ) : (
                 messages.map((msg) => {
+                  const citationGroups = new Map<string, { paper: Citation; locations: Map<string, { citation: Citation; indexes: number[] }> }>();
+                  for (const citation of msg.citations || []) {
+                    let group = citationGroups.get(citation.paper_id);
+                    if (!group) {
+                      group = { paper: citation, locations: new Map() };
+                      citationGroups.set(citation.paper_id, group);
+                    }
+                    const locationKey = `${citation.section_title}|${citation.page_label}|${citation.figure_number || ""}|${citation.claim_supported}`;
+                    let location = group.locations.get(locationKey);
+                    if (!location) {
+                      location = { citation, indexes: [] };
+                      group.locations.set(locationKey, location);
+                    }
+                    if (!location.indexes.includes(citation.citation_index)) location.indexes.push(citation.citation_index);
+                  }
+                  const referencePaperCount = citationGroups.size;
+                  const referenceLocationCount = Array.from(citationGroups.values()).reduce((count, group) => count + group.locations.size, 0);
                   if (msg.sender === "user") {
                     return (
                       <div
@@ -1765,89 +1816,58 @@ export default function ProjectResearchChatbot({
                         <FormattedResearchMarkdown content={msg.text || ""} />
                       </div>
 
-                      {/* Traceable Citations Reference Section */}
-                      {msg.citations && msg.citations.length > 0 && (
-                        <div className="p-3.5 md:p-4 rounded-xl bg-surface-container/60 border border-outline-variant/30 space-y-3">
-                          <div className="flex items-center justify-between pb-2 border-b border-outline-variant/20">
-                            <div className="flex items-center gap-2">
-                              <span className="material-symbols-outlined text-primary text-[18px]">
-                                menu_book
-                              </span>
-                              <span className="text-xs font-semibold uppercase tracking-wider text-on-surface">
-                                Traceable Source Citations ({msg.citations.length})
-                              </span>
-                            </div>
-                            <span className="text-[11px] font-code-sm text-outline">
-                              Verified against Supabase pgvector
+                      {/* Collapsible references grouped by canonical paper ID */}
+                      {referencePaperCount > 0 && (
+                        <div className="rounded-xl bg-surface-container/60 border border-outline-variant/30 overflow-hidden">
+                          <button
+                            type="button"
+                            aria-expanded={Boolean(expandedReferenceMessages[msg.id])}
+                            aria-controls={expandedReferenceMessages[msg.id] ? `references-${msg.id}` : undefined}
+                            onClick={() => setExpandedReferenceMessages((prev) => ({ ...prev, [msg.id]: !prev[msg.id] }))}
+                            className="w-full p-3.5 md:p-4 flex items-center justify-between gap-3 text-left hover:bg-surface-container-high/60 transition-colors"
+                          >
+                            <span className="flex items-center gap-2 text-xs font-semibold text-on-surface">
+                              <span className="material-symbols-outlined text-primary text-[18px]">menu_book</span>
+                              {expandedReferenceMessages[msg.id] ? "Hide references" : `See references (${referencePaperCount} ${referencePaperCount === 1 ? "paper" : "papers"} · ${referenceLocationCount} ${referenceLocationCount === 1 ? "source location" : "source locations"})`}
                             </span>
-                          </div>
+                            <span className="material-symbols-outlined text-outline" aria-hidden="true">
+                              {expandedReferenceMessages[msg.id] ? "expand_less" : "expand_more"}
+                            </span>
+                          </button>
 
-                          <div className="grid grid-cols-1 gap-2.5">
-                            {msg.citations.map((c) => (
-                              <div
-                                key={c.citation_index}
-                                className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/20 hover:border-primary/40 transition-all flex flex-col sm:flex-row sm:items-start justify-between gap-3 text-xs"
-                              >
-                                <div className="space-y-1.5 flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="px-1.5 py-0.5 rounded font-mono font-bold bg-primary/20 text-primary border border-primary/40 text-[11px]">
-                                      [{c.citation_index}]
-                                    </span>
-                                    <a
-                                      href={c.pdf_url || `https://arxiv.org/abs/${c.paper_id}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="font-semibold text-on-surface hover:text-primary transition-colors truncate max-w-md inline-flex items-center gap-1 cursor-pointer"
-                                      title="Open source paper PDF"
-                                    >
-                                      <span>{c.paper_title}</span>
-                                      <span className="material-symbols-outlined text-[13px] opacity-70">
-                                        open_in_new
-                                      </span>
+                          {expandedReferenceMessages[msg.id] && (
+                            <div id={`references-${msg.id}`} className="p-3.5 md:p-4 pt-0 grid grid-cols-1 gap-2.5">
+                              {Array.from(citationGroups.entries()).map(([paperId, group]) => (
+                                <section key={paperId} className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/20 text-xs">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <a href={group.paper.pdf_url || `https://arxiv.org/abs/${paperId}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-on-surface hover:text-primary transition-colors inline-flex items-center gap-1">
+                                        {group.paper.paper_title}
+                                        <span className="material-symbols-outlined text-[13px] opacity-70" aria-hidden="true">open_in_new</span>
+                                      </a>
+                                      <p className="text-[11px] text-outline font-code-sm mt-1">{group.paper.authors} {group.paper.year ? `(${group.paper.year})` : ""}</p>
+                                    </div>
+                                    <a href={group.paper.pdf_url || `https://arxiv.org/abs/${paperId}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface hover:text-primary transition-all text-[11px] font-medium shrink-0">
+                                      <span>View PDF</span><span className="material-symbols-outlined text-[14px]" aria-hidden="true">picture_as_pdf</span>
                                     </a>
                                   </div>
-
-                                  <p className="text-[11px] text-outline font-code-sm">
-                                    {c.authors} {c.year ? `(${c.year})` : ""}
-                                  </p>
-
-                                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                                    <span className="px-2 py-0.5 rounded bg-surface-container-high border border-outline-variant/30 text-on-surface-variant font-code-sm text-[11px]">
-                                      {c.section_title}
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded bg-primary/10 border border-primary/30 text-primary font-code-sm text-[11px] font-medium">
-                                      {c.page_label}
-                                    </span>
-                                    {c.is_visual && (
-                                      <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-code-sm text-[11px]">
-                                        Visual Analysis: {c.figure_number || "Figure"}
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  {c.claim_supported && (
-                                    <p className="text-on-surface-variant text-[11px] italic pt-1 leading-relaxed border-t border-outline-variant/10 mt-1">
-                                      &quot;{c.claim_supported}&quot;
-                                    </p>
-                                  )}
-                                </div>
-
-                                <div className="sm:self-center shrink-0">
-                                  <a
-                                    href={c.pdf_url || `https://arxiv.org/abs/${c.paper_id}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-on-surface hover:text-primary transition-all text-[11px] font-medium"
-                                  >
-                                    <span>View PDF</span>
-                                    <span className="material-symbols-outlined text-[14px]">
-                                      picture_as_pdf
-                                    </span>
-                                  </a>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                                  <ul className="mt-2 space-y-2 border-t border-outline-variant/10 pt-2">
+                                    {Array.from(group.locations.values()).map(({ citation, indexes }) => (
+                                      <li key={`${citation.section_title}|${citation.page_label}|${citation.figure_number || ""}|${citation.claim_supported}`} className="space-y-1">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          {indexes.map((index) => <span key={index} className="px-1.5 py-0.5 rounded font-mono font-bold bg-primary/20 text-primary border border-primary/40 text-[11px]">[{index}]</span>)}
+                                          <span className="px-2 py-0.5 rounded bg-surface-container-high border border-outline-variant/30 text-on-surface-variant font-code-sm text-[11px]">{citation.section_title}</span>
+                                          <span className="px-2 py-0.5 rounded bg-primary/10 border border-primary/30 text-primary font-code-sm text-[11px] font-medium">{citation.page_label}</span>
+                                          {citation.is_visual && <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-code-sm text-[11px]">Visual Analysis: {citation.figure_number || "Figure"}</span>}
+                                        </div>
+                                        {citation.claim_supported && <p className="text-on-surface-variant text-[11px] italic leading-relaxed">&quot;{citation.claim_supported}&quot;</p>}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </section>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2040,7 +2060,7 @@ export default function ProjectResearchChatbot({
                             database
                           </span>
                           <span className="font-medium">
-                            Sources ({activeSourcesCount})
+                            {activeSourcesSummary}
                           </span>
                           <span className="material-symbols-outlined text-[14px] text-outline">
                             expand_more
@@ -2048,36 +2068,64 @@ export default function ProjectResearchChatbot({
                         </button>
 
                         {isSourcesMenuOpen && (
-                          <div className="absolute bottom-full left-0 mb-2 w-64 rounded-xl bg-surface-container-high border border-outline-variant/40 shadow-xl p-2 z-30 flex flex-col gap-1">
-                            <div className="flex items-center justify-between px-2 py-1 border-b border-outline-variant/20 mb-1">
+                          <div className="absolute bottom-full left-0 mb-2 w-72 rounded-xl bg-surface-container-high border border-outline-variant/40 shadow-2xl p-2.5 z-30 flex flex-col gap-1.5 backdrop-blur-md">
+                            <div className="flex items-center justify-between px-1.5 py-1 border-b border-outline-variant/20 mb-0.5">
                               <span className="text-[11px] font-code-sm uppercase tracking-wider text-outline font-semibold">
-                                Select Academic Repos
+                                Literature Sources
                               </span>
-                              <span className="text-[10px] font-code-sm text-primary">
-                                {sources.length} Available
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => selectAllSources(true)}
+                                  className={`text-[10px] font-code-sm px-2 py-0.5 rounded cursor-pointer transition-colors ${
+                                    activeSourcesCount === sources.length
+                                      ? "bg-primary/20 text-primary font-medium border border-primary/30"
+                                      : "text-outline hover:text-on-surface bg-surface-container hover:bg-surface-container-highest"
+                                  }`}
+                                >
+                                  All ({sources.length})
+                                </button>
+                              </div>
                             </div>
-                            {sources.map((src, idx) => (
+                            {sources.map((src) => (
                               <label
-                                key={src.name}
-                                className="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface-container cursor-pointer transition-colors text-xs"
+                                key={src.id}
+                                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors text-xs border ${
+                                  src.checked
+                                    ? "bg-surface-container border-primary/25 hover:bg-surface-container-highest"
+                                    : "bg-surface-container-low border-outline-variant/20 opacity-60 hover:opacity-100 hover:bg-surface-container"
+                                }`}
                               >
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2.5">
                                   <input
                                     type="checkbox"
                                     checked={src.checked}
-                                    onChange={() => toggleSource(idx)}
-                                    className="rounded bg-surface-container-highest border-outline-variant/40 text-primary focus:ring-0 w-3.5 h-3.5"
+                                    onChange={() => toggleSource(src.id)}
+                                    className="rounded bg-surface-container-highest border-outline-variant/40 text-primary focus:ring-0 w-3.5 h-3.5 cursor-pointer"
                                   />
-                                  <span className="text-on-surface font-medium">
-                                    {src.name}
-                                  </span>
+                                  <div className="flex flex-col">
+                                    <span className="text-on-surface font-medium leading-tight">
+                                      {src.name}
+                                    </span>
+                                    <span className="text-[10px] text-on-surface-variant font-code-sm">
+                                      {src.sub}
+                                    </span>
+                                  </div>
                                 </div>
-                                <span className="text-[10px] font-code-sm text-primary bg-primary/10 px-1.5 py-0.2 rounded border border-primary/20">
-                                  {src.sub}
+                                <span
+                                  className={`text-[9px] font-code-sm px-1.5 py-0.5 rounded border ${
+                                    src.checked
+                                      ? "bg-primary/10 text-primary border-primary/20"
+                                      : "bg-surface-container text-outline border-outline-variant/20"
+                                  }`}
+                                >
+                                  {src.checked ? "Active" : "Excluded"}
                                 </span>
                               </label>
                             ))}
+                            <div className="px-1.5 pt-1 text-[10px] text-outline leading-tight border-t border-outline-variant/10">
+                              Chatbot will search only within {activeSourcesCount === 1 ? `the selected source (${sources.find(s => s.checked)?.name})` : "your selected sources"}.
+                            </div>
                           </div>
                         )}
                       </div>

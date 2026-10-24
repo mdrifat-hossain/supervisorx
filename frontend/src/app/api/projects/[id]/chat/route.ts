@@ -47,6 +47,7 @@ export async function POST(
       endYear,
       minScore = 7,
       excludeIds,
+      sources,
     } = body;
 
     if (!message || typeof message !== "string" || !message.trim()) {
@@ -75,6 +76,7 @@ export async function POST(
           end_year: endYear,
           min_score: minScore,
           exclude_ids: excludeIds,
+          sources: Array.isArray(sources) ? sources : undefined,
         }),
       }
     );
