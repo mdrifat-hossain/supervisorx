@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Suspense, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
+import SidebarUserFooter from "@/components/common/SidebarUserFooter";
 
 interface ProjectSidebarProps {
   projectId?: string;
@@ -10,30 +11,23 @@ interface ProjectSidebarProps {
   activeTab?: "dashboard" | "chatbot" | "analysis" | "library" | "settings";
 }
 
-function PathTracker({
-  onPathChange,
-}: {
-  onPathChange: (path: string) => void;
-}) {
-  const pathname = usePathname();
-  useEffect(() => {
-    if (pathname) {
-      onPathChange(pathname);
-    }
-  }, [pathname, onPathChange]);
-  return null;
-}
-
 export default function ProjectSidebar({
   projectId = "cognitive-mapper",
   projectName,
   activeTab,
 }: ProjectSidebarProps) {
-  const [detectedTab, setDetectedTab] = useState<
-    "dashboard" | "chatbot" | "analysis" | "library" | "settings"
-  >(activeTab || "dashboard");
+  const pathname = usePathname();
 
-  const currentTab = activeTab || detectedTab;
+  const currentTab =
+    activeTab ||
+    (pathname?.includes("/chatbot")
+      ? "chatbot"
+      : pathname?.includes("/analysis")
+      ? "analysis"
+      : pathname?.includes("/library")
+      ? "library"
+      : "dashboard");
+
   const effectiveProjectId = projectId || "cognitive-mapper";
   const [currentProjectTitle, setCurrentProjectTitle] = useState(
     projectName || (effectiveProjectId === "cognitive-mapper" ? "Cognitive Mapper v4" : "Project Workspace")
@@ -62,19 +56,6 @@ export default function ProjectSidebar({
 
   return (
     <aside className="fixed top-0 left-0 h-screen w-sidebar-width flex flex-col justify-between p-4 bg-surface-container-low border-r border-outline-variant/30 z-50 select-none overflow-y-auto custom-scrollbar">
-      {/* Suspense-wrapped tracker for client-side pathname detection only when activeTab is not provided */}
-      {!activeTab && (
-        <Suspense fallback={null}>
-          <PathTracker
-            onPathChange={(p) => {
-              if (p.includes("/chatbot")) setDetectedTab("chatbot");
-              else if (p.includes("/analysis")) setDetectedTab("analysis");
-              else if (p.includes("/library")) setDetectedTab("library");
-              else setDetectedTab("dashboard");
-            }}
-          />
-        </Suspense>
-      )}
 
       {/* Top Branding, Back Button & Switcher */}
       <div className="flex flex-col gap-3">
@@ -93,8 +74,12 @@ export default function ProjectSidebar({
         {/* SupervisorX Header */}
         <div className="flex items-center justify-between px-2 pt-1">
           <Link href="/dashboard" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-surface-container-highest border border-outline-variant/40 flex items-center justify-center text-primary shadow-inner group-hover:scale-105 transition-transform">
-              <span className="material-symbols-outlined text-xl">hub</span>
+            <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform shrink-0">
+              <img
+                src="/synergy.png"
+                alt="SupervisorX Logo"
+                className="w-full h-full object-contain"
+              />
             </div>
             <div>
               <div className="font-headline-md text-body-md font-bold text-on-surface tracking-tight leading-none">
@@ -234,7 +219,8 @@ export default function ProjectSidebar({
             )}
           </Link>
 
-          {/* Item 5: Teammates & Settings */}
+          {/* Item 5: Teammates & Settings (Disabled for now, will add dedicated design page later) */}
+          {/*
           <a
             href="#teammates"
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant font-normal hover:bg-surface-container-high hover:text-on-surface transition-colors duration-150 active:scale-[0.98]"
@@ -242,39 +228,12 @@ export default function ProjectSidebar({
             <span className="material-symbols-outlined text-xl">group_work</span>
             <span className="font-body-md text-body-md">Teammates &amp; Settings</span>
           </a>
+          */}
         </nav>
       </div>
 
       {/* Bottom User Profile Footer */}
-      <div className="pt-4 border-t border-outline-variant/20 flex flex-col gap-2 mt-4">
-        <div className="flex items-center justify-between p-2 rounded-lg bg-surface-container-lowest/80 border border-outline-variant/20">
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-9 h-9 rounded-full bg-surface-variant border border-primary/30 flex items-center justify-center font-label-md font-semibold text-primary shrink-0">
-              DR
-            </div>
-            <div className="truncate">
-              <div className="font-headline-md text-body-md font-medium text-on-surface leading-tight truncate">
-                Dr. Researcher
-              </div>
-              <div className="font-label-md text-code-sm text-outline flex items-center gap-1">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                Premium Plan
-              </div>
-            </div>
-          </div>
-          <Link
-            href="/login"
-            className="text-on-surface-variant hover:text-on-surface p-1 rounded transition-colors"
-            title="Settings & Session"
-          >
-            <span className="material-symbols-outlined text-lg">tune</span>
-          </Link>
-        </div>
-        <div className="flex justify-between text-xs font-code-sm text-outline px-1">
-          <span>Vault: 4.2TB / 10TB</span>
-          <span className="text-primary hover:underline cursor-pointer">Upgrade</span>
-        </div>
-      </div>
+      <SidebarUserFooter />
     </aside>
   );
 }

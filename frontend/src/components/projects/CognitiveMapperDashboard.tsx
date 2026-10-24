@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import ProjectSidebar from "@/components/common/ProjectSidebar";
 
@@ -10,6 +10,56 @@ interface ProjectDetails {
   domain: string;
   description: string;
   color?: string;
+}
+
+const PIPELINE_STEPS = [
+  { id: "load", label: "PDF Cloud Load", desc: "Retrieve PDF from Supabase Storage" },
+  { id: "text", label: "Structure & Chunks", desc: "PyMuPDF section & text extraction" },
+  { id: "vlm", label: "Multimodal Visual AI", desc: "Nemotron VLM figures & diagrams" },
+  { id: "vector", label: "pgvector Indexing", desc: "2048-D embeddings & database write" },
+];
+
+function getActiveStepIndex(stage: string): number {
+  switch (stage) {
+    case "validating":
+      return 0;
+    case "extracting_text":
+    case "extracting_figures":
+      return 1;
+    case "analyzing_figures":
+      return 2;
+    case "generating_embeddings":
+    case "saving_vectors":
+    case "finalizing":
+      return 3;
+    case "completed":
+      return 4;
+    default:
+      return 0;
+  }
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  validating: "Downloading preprint from Supabase Storage",
+  extracting_text: "Extracting document structure & section-aware chunks",
+  extracting_figures: "Detecting figures, charts, diagrams & image tables",
+  analyzing_figures: "Analyzing visual diagrams with Nemotron Vision VLM",
+  generating_embeddings: "Generating 2048-D dense embeddings via Nemotron",
+  saving_vectors: "Persisting chunks and vectors in Supabase pgvector",
+  finalizing: "Synthesizing research claims & citation cross-references",
+  completed: "Analysis Complete & pgvector Synchronized",
+};
+
+function formatDateLabel(dateStr: string): string {
+  if (!dateStr) return "";
+  const parts = dateStr.split("-");
+  if (parts.length !== 3) return dateStr;
+  const year = parts[0];
+  const month = parts[1];
+  const day = parts[2];
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const mIdx = parseInt(month, 10) - 1;
+  return `${monthNames[mIdx] || month} ${parseInt(day, 10)}, ${year}`;
 }
 
 export default function CognitiveMapperDashboard({
@@ -24,8 +74,27 @@ export default function CognitiveMapperDashboard({
   const [selectedRole, setSelectedRole] = useState("Editor");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
   const [isEditingNote, setIsEditingNote] = useState(false);
+  const [currentYear, setCurrentYear] = useState<number | null>(null);
 
   useEffect(() => {
+    setCurrentYear(new Date().getFullYear());
+  }, []);
+
+  // Dynamic Project Papers & Stats
+  const [papers, setPapers] = useState<any[]>([]);
+  const [, setLoadingPapers] = useState(true);
+
+  // Live Analysis Engine Progress State
+  const [showProgressBar, setShowProgressBar] = useState(false);
+  const [progressLevel, setProgressLevel] = useState(0);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [currentStage, setCurrentStage] = useState("validating");
+  const [activePaperTitle, setActivePaperTitle] = useState("");
+  const [processedCount, setProcessedCount] = useState(0);
+  const [totalToProcess, setTotalToProcess] = useState(1);
+  const [jobCompleted, setJobCompleted] = useState(false);
+
+  const fetchProjectDetails = useCallback(() => {
     if (!projectId) return;
     fetch(`/api/projects/${projectId}`)
       .then((res) => res.json())
@@ -38,6 +107,179 @@ export default function CognitiveMapperDashboard({
         console.error("Error fetching project details:", err);
       });
   }, [projectId]);
+
+  const fetchPapers = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/papers`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && Array.isArray(data.papers)) {
+        setPapers(data.papers);
+      }
+    } catch (err) {
+      console.error("Error fetching project papers for dashboard:", err);
+    } finally {
+      setLoadingPapers(false);
+    }
+  }, [projectId]);
+
+  // Dynamic Project Research Activity & Cadence State
+  const [cadenceRange, setCadenceRange] = useState("last_6_months");
+  const [activityData, setActivityData] = useState<{
+    range: string;
+    weeks: Array<
+      Array<{
+        date: string;
+        dayOfWeek: number;
+        count: number;
+        level: number;
+        isToday: boolean;
+        isInRange: boolean;
+        breakdown: { chat: number; download: number; analyzed: number; other: number };
+      }>
+    >;
+    monthHeaders: Array<{ label: string; weekIndex: number }>;
+    months?: Array<{
+      name: string;
+      fullName: string;
+      year: number;
+      month: number;
+      totalActions: number;
+      activeDaysCount: number;
+      weeks: Array<
+        Array<{
+          date: string | null;
+          dayNumber: number | null;
+          dayOfWeek: number;
+          count: number;
+          level: number;
+          isToday: boolean;
+          isInRange: boolean;
+          breakdown: { chat: number; download: number; analyzed: number; other: number };
+        }>
+      >;
+    }>;
+    summary: {
+      totalActions: number;
+      chatInteractions: number;
+      papersDownloaded: number;
+      papersAnalyzed: number;
+      otherActions: number;
+      activeDaysCount: number;
+      currentStreak: number;
+      longestStreak: number;
+    };
+  } | null>(null);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [hoveredDay, setHoveredDay] = useState<{
+    date: string;
+    count: number;
+    breakdown: { chat: number; download: number; analyzed: number; other: number };
+  } | null>(null);
+
+  const fetchActivityData = useCallback(
+    async (range: string) => {
+      if (!projectId) return;
+      setLoadingActivity(true);
+      try {
+        const res = await fetch(
+          `/api/projects/${encodeURIComponent(projectId)}/activity?range=${encodeURIComponent(range)}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            setActivityData(data);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching project activity cadence:", err);
+      } finally {
+        setLoadingActivity(false);
+      }
+    },
+    [projectId]
+  );
+
+  useEffect(() => {
+    fetchProjectDetails();
+    fetchPapers();
+  }, [fetchProjectDetails, fetchPapers]);
+
+  useEffect(() => {
+    fetchActivityData(cadenceRange);
+  }, [cadenceRange, fetchActivityData]);
+
+  const fetchPapersRef = useRef(fetchPapers);
+  fetchPapersRef.current = fetchPapers;
+  const fetchActivityDataRef = useRef(fetchActivityData);
+  fetchActivityDataRef.current = fetchActivityData;
+  const cadenceRangeRef = useRef(cadenceRange);
+  cadenceRangeRef.current = cadenceRange;
+
+  // Poll for active analysis progress (same as Upload & Analysis page, auto-dismisses on completion)
+  useEffect(() => {
+    if (!projectId) return;
+
+    let isMounted = true;
+    let dismissTimer: NodeJS.Timeout | null = null;
+
+    const checkAnalysisStatus = async () => {
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/analysis`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const job = data.job;
+
+        if (!isMounted) return;
+
+        if (job && (job.status === "processing" || job.status === "pending")) {
+          setShowProgressBar(true);
+          setIsAnalyzing(true);
+          setJobCompleted(false);
+
+          const total = job.total_papers || 1;
+          const processed = job.processed_papers || 0;
+          setProcessedCount(processed);
+          setTotalToProcess(total);
+          setCurrentStage(job.current_stage || "validating");
+          if (job.current_paper_title) {
+            setActivePaperTitle(job.current_paper_title);
+          }
+          const serverPct = job.progress_percent ?? Math.round((processed / total) * 100);
+          setProgressLevel(Math.max(serverPct, 8));
+        } else if (job && job.status === "completed") {
+          if (isAnalyzing) {
+            setProgressLevel(100);
+            setCurrentStage("completed");
+            setIsAnalyzing(false);
+            setJobCompleted(true);
+            fetchPapersRef.current(); // refresh cards immediately
+            fetchActivityDataRef.current(cadenceRangeRef.current); // refresh activity immediately
+            dismissTimer = setTimeout(() => {
+              if (isMounted) setShowProgressBar(false);
+            }, 3000);
+          }
+        } else {
+          if (!jobCompleted) {
+            setShowProgressBar(false);
+            setIsAnalyzing(false);
+          }
+        }
+      } catch (err) {
+        console.error("Dashboard analysis status check error:", err);
+      }
+    };
+
+    checkAnalysisStatus();
+    const interval = setInterval(checkAnalysisStatus, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      if (dismissTimer) clearTimeout(dismissTimer);
+    };
+  }, [projectId, isAnalyzing, jobCompleted]);
 
   const displayTitle =
     projectData?.title ||
@@ -108,7 +350,7 @@ export default function CognitiveMapperDashboard({
             </div>
 
             {/* Live Sync Indicator Badge */}
-            <div className="hidden xl:flex items-center gap-2 px-2.5 py-1 rounded-full bg-surface-container border border-primary/30">
+            {/* <div className="hidden xl:flex items-center gap-2 px-2.5 py-1 rounded-full bg-surface-container border border-primary/30">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
@@ -116,10 +358,11 @@ export default function CognitiveMapperDashboard({
               <span className="font-label-md text-code-sm text-primary tracking-tight">
                 Active Run 44 • 68% complete
               </span>
-            </div>
+            </div> */}
           </div>
 
           {/* Right: Teammates & Primary Action */}
+          {false && (
           <div className="flex items-center gap-3">
             {/* Teammates avatar stack */}
             <div className="flex items-center -space-x-2 mr-2">
@@ -180,7 +423,7 @@ export default function CognitiveMapperDashboard({
               <span className="material-symbols-outlined text-lg">chat</span>
               <span>Open Paper Chatbot</span>
             </Link>
-          </div>
+          </div>  )}
         </header>
 
         {/* Canvas Scrollable Body */}
@@ -371,171 +614,333 @@ export default function CognitiveMapperDashboard({
 
           {/* SECTION 3: RESEARCH STATS & METRICS */}
           <section className="flex flex-col gap-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Card 1: Total Papers Downloaded */}
-              <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-4 flex flex-col justify-between hover:border-primary/30 transition-all hover:shadow-lg">
-                <div className="flex items-center justify-between">
-                  <span className="font-label-md text-code-sm text-on-surface-variant uppercase tracking-wider">
-                    Papers Downloaded
-                  </span>
-                  <div className="p-2 rounded-lg bg-surface-container text-primary">
-                    <span className="material-symbols-outlined text-lg">download</span>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <div className="font-headline-lg text-headline-lg font-bold text-on-surface leading-none">
-                    42 Papers
-                  </div>
-                  <div className="mt-1 flex items-center gap-1.5 font-label-md text-code-sm text-emerald-400">
-                    <span className="material-symbols-outlined text-xs">trending_up</span>
-                    <span>+6 this week</span>
-                  </div>
-                </div>
-                <div className="mt-3 pt-2 border-t border-outline-variant/20 flex justify-between text-xs text-outline font-label-md">
-                  <span>Target: 50 papers</span>
-                  <span>84% of cohort</span>
-                </div>
-              </div>
+            {/* Dynamic Calculated Statistics */}
+            {(() => {
+              const totalDownloaded = papers.length;
+              const analyzedCount = papers.filter((p) => p.status === "analyzed").length;
+              const notAnalyzedCount = totalDownloaded - analyzedCount;
+              const analyzedPercent =
+                totalDownloaded > 0
+                  ? Math.round((analyzedCount / totalDownloaded) * 100)
+                  : 0;
 
-              {/* Card 2: Papers Analyzed */}
-              <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-4 flex flex-col justify-between hover:border-primary/30 transition-all hover:shadow-lg">
-                <div className="flex items-center justify-between">
-                  <span className="font-label-md text-code-sm text-on-surface-variant uppercase tracking-wider">
-                    Papers Analyzed
-                  </span>
-                  <div className="p-2 rounded-lg bg-surface-container text-primary">
-                    <span className="material-symbols-outlined text-lg">analytics</span>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <div className="font-headline-lg text-headline-lg font-bold text-on-surface leading-none">
-                    28 Analyzed
-                  </div>
-                  <div className="mt-1 flex items-center gap-1.5 font-label-md text-code-sm text-primary">
-                    <span>66.7% coverage rate</span>
-                  </div>
-                </div>
-                <div className="mt-3 pt-2 border-t border-outline-variant/20 flex justify-between text-xs text-outline font-label-md">
-                  <span>Avg pass time: 4.2m</span>
-                  <span className="text-emerald-400">0 failures</span>
-                </div>
-              </div>
+              const totalSizeBytes = papers.reduce(
+                (sum, p) => sum + (Number(p.file_size) || 0),
+                0
+              );
+              const totalVectorsCount = papers.reduce(
+                (sum, p) =>
+                  sum + (Number(p.vectors_count) || Number(p.chunks_count) || 0),
+                0
+              );
 
-              {/* Card 3: Papers Waiting for Analysis */}
-              <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-4 flex flex-col justify-between hover:border-primary/30 transition-all hover:shadow-lg">
-                <div className="flex items-center justify-between">
-                  <span className="font-label-md text-code-sm text-on-surface-variant uppercase tracking-wider">
-                    Queued for Analysis
-                  </span>
-                  <div className="p-2 rounded-lg bg-surface-container text-amber-400">
-                    <span className="material-symbols-outlined text-lg">hourglass_top</span>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <div className="font-headline-lg text-headline-lg font-bold text-amber-300 leading-none">
-                    14 Queued
-                  </div>
-                  <div className="mt-1 flex items-center gap-1.5 font-label-md text-code-sm text-on-surface-variant">
-                    <span>3 batch tasks staged</span>
-                  </div>
-                </div>
-                <div className="mt-3 pt-2 border-t border-outline-variant/20 flex justify-between items-center text-xs font-label-md">
-                  <a
-                    className="text-primary hover:text-surface-tint font-medium underline flex items-center gap-0.5"
-                    href="#batch"
-                  >
-                    <span>Start Batch Analysis</span>
-                    <span className="material-symbols-outlined text-xs">arrow_forward</span>
-                  </a>
-                </div>
-              </div>
+              const formatStorage = (bytes: number) => {
+                if (bytes <= 0) return "0.0 MB";
+                const mb = bytes / (1024 * 1024);
+                if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
+                return `${mb.toFixed(1)} MB`;
+              };
 
-              {/* Card 4: Database Embeddings Stored */}
-              <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-4 flex flex-col justify-between hover:border-primary/30 transition-all hover:shadow-lg">
-                <div className="flex items-center justify-between">
-                  <span className="font-label-md text-code-sm text-on-surface-variant uppercase tracking-wider">
-                    Embeddings Stored
-                  </span>
-                  <div className="p-2 rounded-lg bg-surface-container text-tertiary">
-                    <span className="material-symbols-outlined text-lg">database</span>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <div className="font-headline-lg text-headline-lg font-bold text-on-surface leading-none">
-                    1.42M Vectors
-                  </div>
-                  <div className="mt-1 flex items-center gap-1.5 font-label-md text-code-sm text-outline">
-                    <span>Vector Vault: 4.2 TB indexed</span>
-                  </div>
-                </div>
-                <div className="mt-3 pt-2 border-t border-outline-variant/20 flex justify-between text-xs text-outline font-label-md">
-                  <span>HNSW index cosine</span>
-                  <span className="text-primary font-medium">99.4% recall</span>
-                </div>
-              </div>
-            </div>
+              const activeStepIdx = getActiveStepIndex(currentStage);
 
-            {/* Global Pipeline Progress Bar */}
-            <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-headline-md text-body-lg font-semibold text-on-surface">
-                      Global Pipeline Execution Progress
-                    </h3>
-                    <span className="px-2 py-0.5 rounded text-[11px] font-label-md bg-primary-container/20 text-primary border border-primary/30">
-                      Total Progress: 68%
-                    </span>
+              return (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Card 1: Total Papers Downloaded */}
+                    <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-4 flex flex-col justify-between hover:border-primary/30 transition-all hover:shadow-lg">
+                      <div className="flex items-center justify-between">
+                        <span className="font-label-md text-code-sm text-on-surface-variant uppercase tracking-wider">
+                          Papers Downloaded
+                        </span>
+                        <div className="p-2 rounded-lg bg-surface-container text-primary">
+                          <span className="material-symbols-outlined text-lg">download</span>
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <div className="font-headline-lg text-headline-lg font-bold text-on-surface leading-none">
+                          {totalDownloaded} {totalDownloaded === 1 ? "Paper" : "Papers"}
+                        </div>
+                        <div className="mt-1 flex items-center gap-1.5 font-label-md text-code-sm text-emerald-400">
+                          <span className="material-symbols-outlined text-xs">folder</span>
+                          <span>In Project Library</span>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-outline-variant/20 flex justify-between items-center text-xs text-outline font-label-md">
+                        <Link
+                          href={`/projects/${projectId}/library`}
+                          className="text-primary hover:underline flex items-center justify-between w-full"
+                        >
+                          <span>View Library</span>
+                          <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                        </Link>
+                      </div>
+                    </div>
+
+                    {/* Card 2: Papers Analyzed */}
+                    <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-4 flex flex-col justify-between hover:border-primary/30 transition-all hover:shadow-lg">
+                      <div className="flex items-center justify-between">
+                        <span className="font-label-md text-code-sm text-on-surface-variant uppercase tracking-wider">
+                          Papers Analyzed
+                        </span>
+                        <div className="p-2 rounded-lg bg-surface-container text-primary">
+                          <span className="material-symbols-outlined text-lg">analytics</span>
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <div className="font-headline-lg text-headline-lg font-bold text-on-surface leading-none">
+                          {analyzedCount} Analyzed
+                        </div>
+                        <div className="mt-1 flex items-center gap-1.5 font-label-md text-code-sm text-emerald-400">
+                          <span className="material-symbols-outlined text-xs">check_circle</span>
+                          <span>{analyzedPercent}% Analyzed</span>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-outline-variant/20 flex justify-between text-xs text-outline font-label-md">
+                        <span>Grounded in pgvector</span>
+                        <span>{totalVectorsCount} chunks</span>
+                      </div>
+                    </div>
+
+                    {/* Card 3: Papers Waiting for Analysis */}
+                    <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-4 flex flex-col justify-between hover:border-primary/30 transition-all hover:shadow-lg">
+                      <div className="flex items-center justify-between">
+                        <span className="font-label-md text-code-sm text-on-surface-variant uppercase tracking-wider">
+                          Not Analyzed
+                        </span>
+                        <div className={`p-2 rounded-lg bg-surface-container ${notAnalyzedCount > 0 ? "text-amber-400" : "text-emerald-400"}`}>
+                          <span className="material-symbols-outlined text-lg">
+                            {notAnalyzedCount > 0 ? "hourglass_top" : "task_alt"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <div className={`font-headline-lg text-headline-lg font-bold leading-none ${notAnalyzedCount > 0 ? "text-amber-300" : "text-emerald-400"}`}>
+                          {notAnalyzedCount} {notAnalyzedCount === 1 ? "Remains" : "Remains"}
+                        </div>
+                        <div className="mt-1 flex items-center gap-1.5 font-label-md text-code-sm text-outline">
+                          {notAnalyzedCount > 0 ? (
+                            <span className="text-amber-400/90">Awaiting AI extraction</span>
+                          ) : (
+                            <span className="text-emerald-400/90">All papers vectorized</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-outline-variant/20 flex justify-between items-center text-xs font-label-md">
+                        <Link
+                          className="text-primary hover:text-surface-tint font-medium underline flex items-center gap-0.5"
+                          href={`/projects/${projectId}/analysis`}
+                        >
+                          <span>{notAnalyzedCount > 0 ? "Start Paper Analysis" : "View Analysis Center"}</span>
+                          <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                        </Link>
+                      </div>
+                    </div>
+
+                    {/* Card 4: Total Project Storage */}
+                    <div className="bg-surface-container-low border border-outline-variant/30 rounded-xl p-4 flex flex-col justify-between hover:border-primary/30 transition-all hover:shadow-lg">
+                      <div className="flex items-center justify-between">
+                        <span className="font-label-md text-code-sm text-on-surface-variant uppercase tracking-wider">
+                          Project Storage
+                        </span>
+                        <div className="p-2 rounded-lg bg-surface-container text-tertiary">
+                          <span className="material-symbols-outlined text-lg">database</span>
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <div className="font-headline-lg text-headline-lg font-bold text-on-surface leading-none">
+                          {formatStorage(totalSizeBytes)}
+                        </div>
+                        <div className="mt-1 flex items-center gap-1.5 font-label-md text-code-sm text-outline">
+                          <span>PDFs &amp; Vector Embeddings</span>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-outline-variant/20 flex justify-between text-xs text-outline font-label-md">
+                        <span>{totalDownloaded} PDFs stored</span>
+                        <span>{totalVectorsCount > 0 ? `${totalVectorsCount} vectors` : "Local vault"}</span>
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-xs font-code-sm text-outline">
-                    Synchronizing data across Ingestion, Vectorization, and Latent Synthesis stages.
-                  </p>
-                </div>
-                <div className="flex items-center gap-3 text-xs font-code-sm text-on-surface-variant">
-                  <span>ETA: ~48 mins</span>
-                  <span className="text-outline">|</span>
-                  <span className="text-primary cursor-pointer hover:underline">
-                    View Pipeline Telemetry
-                  </span>
-                </div>
-              </div>
 
-              {/* Segmented Progress Bar */}
-              <div className="w-full bg-surface-container-lowest h-3.5 rounded-full overflow-hidden flex p-0.5 border border-outline-variant/30">
-                <div
-                  className="bg-emerald-500 h-full rounded-l-full relative group cursor-pointer"
-                  style={{ width: "35%" }}
-                  title="Stage 1: Ingestion - 100% complete"
-                ></div>
-                <div
-                  className="bg-primary h-full relative group cursor-pointer"
-                  style={{ width: "25%" }}
-                  title="Stage 2: Vectorization - 80% complete"
-                ></div>
-                <div
-                  className="bg-tertiary-container h-full relative group cursor-pointer"
-                  style={{ width: "8%" }}
-                  title="Stage 3: Synthesis - 30% complete"
-                ></div>
-                <div className="bg-surface-container h-full rounded-r-full flex-1"></div>
-              </div>
+                  {/* Paper Analysis Live Progress Card: Appears only when analysis is running, auto-dismisses on completion */}
+                  {showProgressBar && (
+                    <div className="glass-panel p-lg rounded-xl border border-primary/40 relative overflow-hidden ink-shadow bg-surface-container-low transition-all duration-500 animate-fadeIn">
+                      <div className="absolute -right-20 -top-20 w-56 h-56 bg-primary/10 blur-[90px] rounded-full pointer-events-none"></div>
+                      <div className="absolute -left-20 -bottom-20 w-56 h-56 bg-tertiary/10 blur-[90px] rounded-full pointer-events-none"></div>
+                      <div className="flex flex-col gap-md relative z-10">
+                        {/* Top Row: Title, Glowing Badge, Live Metrics, Dismiss Button */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-sm">
+                          <div className="flex items-center gap-md">
+                            <div
+                              className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all ${
+                                jobCompleted
+                                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-[0_0_15px_rgba(52,211,153,0.3)]"
+                                  : "bg-primary/20 text-primary border-primary/30 shadow-[0_0_15px_rgba(77,142,255,0.25)]"
+                              }`}
+                            >
+                              <span
+                                className={`material-symbols-outlined text-xl ${
+                                  isAnalyzing ? "animate-spin" : ""
+                                }`}
+                                style={{ animationDuration: "5s" }}
+                              >
+                                {jobCompleted ? "check_circle" : "autorenew"}
+                              </span>
+                            </div>
+                            <div>
+                              <div className="font-label-md text-label-md text-on-surface font-semibold flex items-center gap-2 flex-wrap">
+                                <span className="text-base text-on-surface font-bold">
+                                  AI Paper Analysis Engine
+                                </span>
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-code-sm border ${
+                                    jobCompleted
+                                      ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                                      : "bg-primary/15 text-primary border-primary/30 shadow-[0_0_10px_rgba(173,198,255,0.2)]"
+                                  }`}
+                                >
+                                  {!jobCompleted && (
+                                    <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+                                  )}
+                                  <span>
+                                    {jobCompleted
+                                      ? "Analysis Complete & Vectorized"
+                                      : totalToProcess > 1
+                                      ? `Analyzing Paper ${Math.min(processedCount + 1, totalToProcess)} of ${totalToProcess}`
+                                      : "Analyzing Research Paper"}
+                                  </span>
+                                </span>
+                              </div>
+                              <div className="font-code-sm text-code-sm text-on-surface-variant mt-0.5">
+                                {jobCompleted ? (
+                                  <span className="text-emerald-400 font-medium">
+                                    ✓ Full semantic embeddings stored in Supabase pgvector
+                                  </span>
+                                ) : (
+                                  <span>
+                                    {processedCount} of {totalToProcess} Papers Completed • {analyzedCount} Total Indexed
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
 
-              {/* Segment Markers */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 pt-2 text-xs font-label-md">
-                <div className="flex items-center gap-2 text-emerald-400">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  <span>1. Ingestion (100% Complete)</span>
-                </div>
-                <div className="flex items-center gap-2 text-primary">
-                  <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-                  <span>2. Vectorization (80% Running)</span>
-                </div>
-                <div className="flex items-center gap-2 text-tertiary">
-                  <span className="w-2 h-2 rounded-full bg-tertiary"></span>
-                  <span>3. Synthesis (Queued / 30%)</span>
-                </div>
-              </div>
-            </div>
+                          <div className="flex items-center gap-md self-end sm:self-auto">
+                            <div className="flex items-baseline sm:text-right gap-2 sm:flex-col sm:gap-0">
+                              <span
+                                className={`font-code-sm text-headline-lg font-bold tracking-tight drop-shadow-[0_0_12px_rgba(77,142,255,0.4)] ${
+                                  jobCompleted ? "text-emerald-400" : "text-primary"
+                                }`}
+                              >
+                                {progressLevel}%
+                              </span>
+                              <span className="font-code-sm text-[11px] text-on-surface-variant">
+                                {jobCompleted ? "Completed" : "In Progress"}
+                              </span>
+                            </div>
+                            {jobCompleted && (
+                              <button
+                                onClick={() => setShowProgressBar(false)}
+                                className="p-1.5 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer border border-outline-variant/30"
+                                title="Dismiss Progress Card"
+                              >
+                                <span className="material-symbols-outlined text-base">close</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Progress Bar: Sleek Gradient */}
+                        <div className="relative w-full bg-surface-container-highest/80 h-3.5 rounded-full overflow-hidden p-0.5 border border-outline-variant/40 shadow-inner">
+                          <div
+                            className={`relative h-full rounded-full transition-all duration-700 ease-out overflow-hidden ${
+                              jobCompleted
+                                ? "bg-gradient-to-r from-emerald-600 to-teal-400 shadow-[0_0_18px_#34d399]"
+                                : "bg-gradient-to-r from-blue-600 via-primary-container to-tertiary-container shadow-[0_0_18px_#4d8eff]"
+                            }`}
+                            style={{ width: `${progressLevel}%` }}
+                          >
+                            <div className="absolute inset-0 animate-shimmer"></div>
+                          </div>
+                        </div>
+
+                        {/* Visual 4-Stage Stepper: Clearly explains what stage is currently running */}
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-1 border-t border-outline-variant/20">
+                          {PIPELINE_STEPS.map((step, idx) => {
+                            const isDone = jobCompleted || activeStepIdx > idx;
+                            const isCurrent = !jobCompleted && activeStepIdx === idx;
+                            return (
+                              <div
+                                key={step.id}
+                                className={`p-2 rounded-lg border flex items-center gap-2 transition-all ${
+                                  isDone
+                                    ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                                    : isCurrent
+                                    ? "bg-primary/15 border-primary/40 text-primary shadow-sm"
+                                    : "bg-surface-container-high/40 border-outline-variant/20 text-on-surface-variant/60"
+                                }`}
+                              >
+                                <div className="flex-shrink-0">
+                                  {isDone ? (
+                                    <span className="material-symbols-outlined text-base text-emerald-400">
+                                      check_circle
+                                    </span>
+                                  ) : isCurrent ? (
+                                    <span className="material-symbols-outlined text-base text-primary animate-spin">
+                                      progress_activity
+                                    </span>
+                                  ) : (
+                                    <span className="material-symbols-outlined text-base text-outline">
+                                      radio_button_unchecked
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[11px] font-semibold truncate leading-tight font-label-md">
+                                    {step.label}
+                                  </div>
+                                  <div className="text-[9px] truncate text-on-surface-variant/70 font-code-sm">
+                                    {isCurrent ? "Active Stage" : step.desc}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Bottom Row: Active Paper Title & Stage Task Details */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between text-code-sm text-on-surface-variant gap-1 pt-0.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="material-symbols-outlined text-sm text-primary flex-shrink-0">
+                              auto_awesome
+                            </span>
+                            <span className="text-xs truncate">
+                              <span className="font-medium text-on-surface">
+                                {jobCompleted ? "Done: " : "Current task: "}
+                              </span>
+                              <span className="text-primary font-medium">
+                                {STAGE_LABELS[currentStage] || currentStage}
+                              </span>
+                              {activePaperTitle && (
+                                <span className="text-on-surface-variant ml-1 truncate">
+                                  • {activePaperTitle}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-code-sm text-outline flex-shrink-0 self-end sm:self-auto">
+                            {jobCompleted ? (
+                              <span className="text-emerald-400 font-medium">100% Vectorized</span>
+                            ) : (
+                              <span>ETA: Processing sequentially</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </section>
 
           {/* SECTION 4: RESEARCH ACTIVITY CALENDAR & CADENCE */}
@@ -551,127 +956,204 @@ export default function CognitiveMapperDashboard({
                   </span>
                 </div>
                 <p className="text-xs font-code-sm text-outline">
-                  Tracks preprint downloads, attention probe tests, and embedding injections.
+                  Tracks preprint downloads, paper analyses, vector embeddings, and research chatbot queries.
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-label-md text-code-sm text-outline">Cadence Range:</span>
-                <select className="bg-surface-container border border-outline-variant/40 rounded-lg text-xs font-label-md text-on-surface px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer">
-                  <option>Last 6 Months</option>
-                  <option>Last 30 Days</option>
-                  <option>Year to Date (2025)</option>
-                  <option>All-Time Workspace History</option>
+                <select
+                  value={cadenceRange}
+                  onChange={(e) => setCadenceRange(e.target.value)}
+                  className="bg-surface-container border border-outline-variant/40 rounded-lg text-xs font-label-md text-on-surface px-3 py-1.5 focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-pointer"
+                >
+                  <option value="last_6_months">Last 6 Months</option>
+                  <option value="last_30_days">Last 30 Days</option>
+                  <option value="year_to_date">Year to Date {currentYear ? `(${currentYear})` : ""}</option>
+                  <option value="all_time">All-Time Workspace History</option>
                 </select>
               </div>
             </div>
 
-            {/* Heatmap Matrix */}
-            <div className="overflow-x-auto pb-2 custom-scrollbar">
-              <div className="min-w-[720px] flex flex-col gap-1.5">
-                <div className="flex text-[11px] font-label-md text-outline pl-8 justify-between pr-4">
-                  <span>Nov</span>
-                  <span>Dec</span>
-                  <span>Jan</span>
-                  <span>Feb</span>
-                  <span>Mar</span>
-                  <span>Apr</span>
+            {/* Heatmap Matrix: Full width responsive grid with distinct month cards and gaps */}
+            <div className="w-full">
+              {activityData?.months && activityData.months.length > 0 ? (
+                <div
+                  className={`w-full grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3.5 ${
+                    loadingActivity ? "opacity-70 transition-opacity" : ""
+                  }`}
+                >
+                  {activityData.months.map((m) => (
+                    <div
+                      key={`${m.year}-${m.month}`}
+                      className="bg-surface-container/30 border border-outline-variant/25 rounded-xl p-3 flex flex-col justify-between hover:border-primary/30 transition-all hover:shadow-md min-w-0"
+                    >
+                      {/* Month Header with action badge */}
+                      <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-outline-variant/15">
+                        <span className="text-xs font-semibold text-on-surface tracking-wide">
+                          {m.name} <span className="text-[10px] font-normal text-outline">{m.year}</span>
+                        </span>
+                        {m.totalActions > 0 ? (
+                          <span className="text-[10px] font-label-md px-1.5 py-0.5 rounded bg-primary/20 text-primary font-medium">
+                            {m.totalActions} acts
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-label-md text-outline/60">0</span>
+                        )}
+                      </div>
+
+                      {/* Week Columns of 7 Rows within this month */}
+                      <div className="flex justify-between gap-1 w-full flex-1 items-center py-0.5">
+                        {m.weeks.map((week, wIdx) => (
+                          <div key={wIdx} className="flex flex-col justify-between gap-1 flex-1">
+                            {week.map((day, dIdx) => {
+                              if (!day.date) {
+                                return (
+                                  <div
+                                    key={`pad-${dIdx}`}
+                                    className="w-full aspect-square rounded-sm opacity-0 pointer-events-none"
+                                  />
+                                );
+                              }
+                              const levelClasses = [
+                                "bg-surface-container-high/60 border border-outline-variant/10",
+                                "bg-primary/25 border border-primary/30",
+                                "bg-primary/50 border border-primary/50",
+                                "bg-primary/75 border border-primary/70",
+                                "bg-primary shadow-sm shadow-primary/30",
+                              ];
+                              const tooltipTitle =
+                                day.count > 0
+                                  ? `${formatDateLabel(day.date)}: ${day.count} research actions (${[
+                                      day.breakdown.chat ? `${day.breakdown.chat} chat` : "",
+                                      day.breakdown.analyzed ? `${day.breakdown.analyzed} analyzed` : "",
+                                      day.breakdown.download ? `${day.breakdown.download} downloaded` : "",
+                                      day.breakdown.other ? `${day.breakdown.other} jobs/searches` : "",
+                                    ]
+                                      .filter(Boolean)
+                                      .join(", ")})`
+                                  : `${formatDateLabel(day.date)}: No research activity`;
+
+                              return (
+                                <div
+                                  key={day.date}
+                                  onMouseEnter={() =>
+                                    setHoveredDay({
+                                      date: day.date!,
+                                      count: day.count,
+                                      breakdown: day.breakdown,
+                                    })
+                                  }
+                                  onMouseLeave={() => setHoveredDay(null)}
+                                  className={`w-full aspect-square rounded-sm ${
+                                    levelClasses[day.level] || levelClasses[0]
+                                  } ${
+                                    day.isToday
+                                      ? "ring-2 ring-primary-fixed ring-offset-1 ring-offset-surface-container-low"
+                                      : ""
+                                  } transition-transform hover:scale-125 cursor-pointer relative`}
+                                  title={tooltipTitle}
+                                />
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex gap-2">
-                  <div className="flex flex-col justify-between text-[10px] font-label-md text-outline py-0.5 h-[104px]">
-                    <span>Mon</span>
-                    <span>Wed</span>
-                    <span>Fri</span>
-                  </div>
-                  {/* Heatmap Grid: 26 weeks x 7 rows */}
-                  <div className="grid grid-flow-col grid-rows-7 gap-1.5 flex-1">
-                    {/* Generates structured matrix mirroring the exact 26 weeks */}
-                    {[
-                      [0, 1, 0, 2, 0, 0, 0],
-                      [1, 3, 4, 0, 2, 0, 0],
-                      [0, 2, 0, 1, 0, 0, 0],
-                      [2, 4, 5, 3, 0, 0, 0],
-                      [0, 0, 1, 2, 0, 0, 0],
-                      [2, 0, 3, 4, 5, 0, 0],
-                      [0, 1, 0, 0, 2, 0, 0],
-                      [3, 2, 4, 0, 0, 0, 0],
-                      [0, 1, 2, 3, 4, 0, 0],
-                      [2, 5, 4, 3, 2, 0, 0],
-                      [0, 1, 0, 2, 0, 0, 0],
-                      [1, 3, 4, 5, 2, 0, 0],
-                      [2, 4, 3, 0, 1, 0, 0],
-                      [0, 2, 3, 4, 5, 0, 0],
-                      [2, 3, 0, 1, 0, 0, 0],
-                      [1, 2, 4, 5, 3, 0, 0],
-                      [0, 1, 2, 0, 3, 0, 0],
-                      [2, 4, 5, 3, 4, 0, 0],
-                      [3, 4, 5, 2, 0, 0, 0],
-                      [0, 2, 3, 4, 5, 0, 0],
-                      [1, 2, 0, 3, 0, 0, 0],
-                      [2, 4, 5, 3, 4, 0, 0],
-                      [3, 5, 4, 2, 0, 0, 0],
-                      [5, 5, 4, 3, 5, 2, 0],
-                      [5, 5, 4, 5, 3, 1, 0],
-                      [5, 5, 4, 0, 0, 0, 0],
-                    ].map((week, wIdx) =>
-                      week.map((level, dIdx) => {
-                        const levelClasses = [
-                          "bg-surface-container-high",
-                          "bg-primary/20",
-                          "bg-primary/40",
-                          "bg-primary/60",
-                          "bg-primary/80",
-                          "bg-primary",
-                        ];
-                        const isCurrentWeek = wIdx === 25 && level > 0;
-                        return (
-                          <div
-                            key={`${wIdx}-${dIdx}`}
-                            className={`w-3.5 h-3.5 rounded-sm ${
-                              levelClasses[level]
-                            } ${isCurrentWeek ? "ring-1 ring-primary-fixed" : ""} transition-transform hover:scale-125 cursor-pointer`}
-                            title={`Activity intensity: ${level}`}
-                          />
-                        );
-                      })
-                    )}
-                  </div>
+              ) : (
+                <div className="w-full grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3.5">
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-surface-container/20 border border-outline-variant/20 rounded-xl p-3 h-[130px] animate-pulse"
+                    />
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
+
+            {/* Live Hover Info bar if hovering an active cell */}
+            {hoveredDay && (
+              <div className="mt-2 text-xs font-label-md text-on-surface-variant flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-lg border border-outline-variant/30 animate-fadeIn">
+                <span className="material-symbols-outlined text-sm text-primary">event_available</span>
+                <span className="font-semibold text-on-surface">
+                  {formatDateLabel(hoveredDay.date)}
+                </span>
+                <span className="text-outline">•</span>
+                <span>
+                  {hoveredDay.count > 0 ? (
+                    <span className="text-primary font-medium">
+                      {hoveredDay.count} total research actions (
+                      {[
+                        hoveredDay.breakdown.chat ? `${hoveredDay.breakdown.chat} chat` : "",
+                        hoveredDay.breakdown.analyzed ? `${hoveredDay.breakdown.analyzed} analyzed` : "",
+                        hoveredDay.breakdown.download ? `${hoveredDay.breakdown.download} downloaded` : "",
+                        hoveredDay.breakdown.other ? `${hoveredDay.breakdown.other} other` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(", ")}
+                      )
+                    </span>
+                  ) : (
+                    <span className="text-outline">No research activity recorded on this day</span>
+                  )}
+                </span>
+              </div>
+            )}
 
             {/* Heatmap Footer with Legend & Breakdown */}
             <div className="mt-4 pt-3 border-t border-outline-variant/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex flex-wrap items-center gap-4 text-xs font-label-md">
                 <span className="text-on-surface font-semibold flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-primary"></span>
-                  184 Total Actions
+                  {activityData?.summary?.totalActions ?? 0} Total Actions
                 </span>
                 <span className="text-outline">•</span>
-                <span className="text-on-surface-variant">82 Papers Searched</span>
+                <span className="text-on-surface-variant">
+                  {activityData?.summary?.chatInteractions ?? 0} Chat Queries
+                </span>
                 <span className="text-outline">•</span>
-                <span className="text-on-surface-variant">42 Downloaded</span>
+                <span className="text-on-surface-variant">
+                  {activityData?.summary?.papersDownloaded ?? 0} Downloaded
+                </span>
                 <span className="text-outline">•</span>
-                <span className="text-on-surface-variant">60 Code / Probes</span>
+                <span className="text-on-surface-variant">
+                  {activityData?.summary?.papersAnalyzed ?? 0} Analyzed
+                </span>
+                {activityData?.summary?.otherActions ? (
+                  <>
+                    <span className="text-outline">•</span>
+                    <span className="text-on-surface-variant">
+                      {activityData.summary.otherActions} Pipeline Runs &amp; Searches
+                    </span>
+                  </>
+                ) : null}
                 <span className="text-outline">•</span>
-                <span className="text-emerald-400 font-medium">Current Streak: 12 Days</span>
+                <span className="text-emerald-400 font-medium">
+                  Current Streak: {activityData?.summary?.currentStreak ?? 0} {activityData?.summary?.currentStreak === 1 ? "Day" : "Days"}
+                </span>
                 <span className="text-outline">•</span>
-                <span className="text-outline">Longest Streak: 26 Days</span>
+                <span className="text-outline">
+                  Longest Streak: {activityData?.summary?.longestStreak ?? 0} {activityData?.summary?.longestStreak === 1 ? "Day" : "Days"}
+                </span>
               </div>
 
               {/* Heatmap Legend */}
               <div className="flex items-center gap-2 text-xs font-label-md text-outline">
                 <span>Less</span>
-                <div className="w-3 h-3 rounded-sm bg-surface-container-high"></div>
-                <div className="w-3 h-3 rounded-sm bg-primary/20"></div>
-                <div className="w-3 h-3 rounded-sm bg-primary/40"></div>
-                <div className="w-3 h-3 rounded-sm bg-primary/60"></div>
-                <div className="w-3 h-3 rounded-sm bg-primary"></div>
+                <div className="w-3 h-3 rounded-sm bg-surface-container-high border border-outline-variant/10" title="0 actions"></div>
+                <div className="w-3 h-3 rounded-sm bg-primary/25 border border-primary/30" title="1-2 actions"></div>
+                <div className="w-3 h-3 rounded-sm bg-primary/50 border border-primary/50" title="3-5 actions"></div>
+                <div className="w-3 h-3 rounded-sm bg-primary/75 border border-primary/70" title="6-9 actions"></div>
+                <div className="w-3 h-3 rounded-sm bg-primary shadow-sm shadow-primary/30" title="10+ actions"></div>
                 <span>More</span>
               </div>
             </div>
           </section>
 
           {/* SECTION 5: TEAMMATES & COLLABORATION PANEL */}
+          {false && (
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Collaborators Card */}
             <div className="lg:col-span-2 bg-surface-container-low border border-outline-variant/30 rounded-xl p-5 flex flex-col justify-between">
@@ -884,13 +1366,14 @@ export default function CognitiveMapperDashboard({
                 </button>
               </div>
             </div>
-          </section>
+          </section> )}
         </main>
       </div>
 
       {/* ========================================== */}
       {/* MODAL: INVITE TEAMMATE MODAL               */}
       {/* ========================================== */}
+      {/*
       {isInviteModalOpen && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-surface-container-low border border-outline-variant/40 rounded-xl max-w-[560px] w-full p-6 shadow-2xl relative">
@@ -986,7 +1469,7 @@ export default function CognitiveMapperDashboard({
             </form>
           </div>
         </div>
-      )}
+      )} */}
     </div>
   );
 }

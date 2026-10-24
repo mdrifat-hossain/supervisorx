@@ -122,6 +122,31 @@ export async function initProjectsTable() {
       completed_at TIMESTAMP WITH TIME ZONE
     );
 
+    CREATE TABLE IF NOT EXISTS project_activities (
+      id VARCHAR(128) PRIMARY KEY,
+      project_id VARCHAR(64) NOT NULL,
+      activity_type VARCHAR(50) NOT NULL,
+      description TEXT,
+      metadata JSONB DEFAULT '{}'::jsonb,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_activities_project ON project_activities(project_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS sticky_notes (
+      id VARCHAR(64) PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      description TEXT DEFAULT '',
+      category VARCHAR(100) DEFAULT 'Active Note',
+      color_type VARCHAR(50) DEFAULT 'amber',
+      status VARCHAR(50) DEFAULT 'Active',
+      is_pinned BOOLEAN DEFAULT FALSE,
+      pinned_at TIMESTAMP WITH TIME ZONE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_sticky_notes_user ON sticky_notes(user_id, is_pinned DESC, created_at DESC);
+
     UPDATE projects
     SET owner_user_id = (SELECT id FROM "user" LIMIT 1)
     WHERE owner_user_id IS NULL AND (SELECT COUNT(*) FROM "user") = 1;

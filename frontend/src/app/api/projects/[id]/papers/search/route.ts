@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getUserId, userOwnsProject } from "@/lib/project-access";
+import { logProjectActivity } from "@/lib/activity-logger";
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
@@ -50,6 +51,8 @@ export async function GET(
     if (excludeIds) endpoint += `&exclude_ids=${encodeURIComponent(excludeIds)}`;
 
     const data = await fetchFromBackend(endpoint);
+    // Log search activity in background
+    logProjectActivity(id, "paper_search", `Literature search: ${query.slice(0, 50)}`).catch(() => {});
     return NextResponse.json({ ...data, projectId: id });
   } catch (error: unknown) {
     console.error("GET /api/projects/[id]/papers/search error:", error);

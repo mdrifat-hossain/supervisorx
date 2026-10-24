@@ -112,6 +112,17 @@ CREATE TABLE IF NOT EXISTS paper_vectors (
 CREATE INDEX IF NOT EXISTS idx_paper_vectors_paper ON paper_vectors(paper_id);
 CREATE INDEX IF NOT EXISTS idx_paper_vectors_project ON paper_vectors(project_id);
 CREATE INDEX IF NOT EXISTS idx_paper_vectors_source ON paper_vectors(source_type, source_id);
+
+-- Unified Project Activity Log
+CREATE TABLE IF NOT EXISTS project_activities (
+    id VARCHAR(128) PRIMARY KEY,
+    project_id VARCHAR(64) NOT NULL,
+    activity_type VARCHAR(50) NOT NULL,
+    description TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_project_activities_project ON project_activities(project_id, created_at);
 """
 
 def apply_migrations():

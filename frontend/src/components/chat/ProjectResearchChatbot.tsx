@@ -1147,52 +1147,6 @@ export default function ProjectResearchChatbot({
               <span className="text-outline">/</span>
               <span className="text-primary font-medium">Find Papers AI Chatbot</span>
             </div>
-
-            {/* Search bar */}
-            <div className="relative hidden xl:flex items-center w-60">
-              <span className="material-symbols-outlined absolute left-3 text-outline text-[18px]">
-                search
-              </span>
-              <input
-                className="w-full bg-surface-container-high/60 border border-outline-variant/30 rounded-lg pl-9 pr-3 py-1.5 text-code-sm font-code-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all text-xs"
-                placeholder={`Search ${projectName}...`}
-                type="text"
-              />
-              <kbd className="absolute right-2.5 px-1.5 py-0.5 text-[10px] font-code-sm text-outline border border-outline-variant/40 rounded bg-surface">
-                ⌘K
-              </kbd>
-            </div>
-          </div>
-
-          {/* Trailing Action Cluster */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 border-r border-outline-variant/30 pr-3">
-              <button
-                className="p-1.5 text-outline hover:text-on-surface rounded hover:bg-surface-container-high transition-colors cursor-pointer"
-                title="Notifications"
-              >
-                <span className="material-symbols-outlined text-[20px]">notifications</span>
-              </button>
-              <button
-                className="p-1.5 text-outline hover:text-on-surface rounded hover:bg-surface-container-high transition-colors cursor-pointer"
-                title="Help Docs"
-              >
-                <span className="material-symbols-outlined text-[20px]">help</span>
-              </button>
-              <button
-                className="p-1.5 text-outline hover:text-on-surface rounded hover:bg-surface-container-high transition-colors cursor-pointer"
-                title="Audit History"
-              >
-                <span className="material-symbols-outlined text-[20px]">history</span>
-              </button>
-            </div>
-            <button className="px-3 py-1.5 text-label-md font-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-lg border border-outline-variant/30 transition-all active:scale-95 cursor-pointer">
-              Invite Member
-            </button>
-            <button className="px-3 py-1.5 text-label-md font-label-md bg-primary text-on-primary font-medium rounded-lg hover:bg-primary-fixed-dim transition-all active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer">
-              <span className="material-symbols-outlined text-[16px]">rocket_launch</span>
-              <span>Deploy Model</span>
-            </button>
           </div>
         </header>
 

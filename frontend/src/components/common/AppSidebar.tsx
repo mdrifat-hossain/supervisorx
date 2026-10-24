@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import SidebarUserFooter from "@/components/common/SidebarUserFooter";
 
 interface AppSidebarProps {
   activeTab?: string;
@@ -29,13 +30,12 @@ export default function AppSidebar({ activeTab }: AppSidebarProps) {
         href="/dashboard"
         className="p-lg flex items-center gap-sm group transition-opacity hover:opacity-90"
       >
-        <div className="w-8 h-8 bg-primary-container rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-          <span
-            className="material-symbols-outlined text-on-primary-container text-[20px]"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
-            sync_alt
-          </span>
+        <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform shrink-0">
+          <img
+            src="/synergy.png"
+            alt="SupervisorX Logo"
+            className="w-full h-full object-contain"
+          />
         </div>
         <span className="font-headline-md text-headline-md font-bold text-primary tracking-tight">
           SupervisorX
@@ -157,25 +157,8 @@ export default function AppSidebar({ activeTab }: AppSidebarProps) {
       </nav>
 
       {/* Profile User Footer */}
-      <div className="p-md border-t border-outline-variant/20 mt-auto">
-        <div className="flex items-center gap-md p-sm hover:bg-surface-variant/20 rounded-xl cursor-pointer transition-all group">
-          <div className="w-10 h-10 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant/30 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-            AT
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-label-md text-on-surface truncate font-medium">Dr. Aris Thorne</div>
-            <div className="font-code-sm text-[10px] text-on-surface-variant uppercase tracking-wider">
-              Senior Fellow
-            </div>
-          </div>
-          <Link
-            href="/login"
-            title="Account Settings & Session"
-            className="text-on-surface-variant hover:text-primary transition-colors p-1"
-          >
-            <span className="material-symbols-outlined text-[18px]">settings</span>
-          </Link>
-        </div>
+      <div className="px-3 pb-3 mt-auto">
+        <SidebarUserFooter />
       </div>
     </aside>
   );

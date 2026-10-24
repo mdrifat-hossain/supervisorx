@@ -525,41 +525,6 @@ export default function PaperAnalyzeCenter({
               <span className="text-on-surface font-semibold">Upload &amp; Analysis</span>
             </div>
           </div>
-
-          <div className="flex items-center gap-md">
-            <div className="relative hidden sm:block">
-              <span className="material-symbols-outlined absolute left-3 top-2.5 text-on-surface-variant text-base">
-                search
-              </span>
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-1.5 bg-surface-container-high border border-outline-variant/40 rounded-lg text-xs font-label-md text-on-surface focus:outline-none focus:border-primary w-48 lg:w-64 transition-all"
-                placeholder="Quick search (Cmd+K)..."
-                type="text"
-              />
-            </div>
-            <button
-              className="p-2 text-on-surface-variant hover:text-primary transition-colors relative cursor-pointer"
-              title="Notifications"
-            >
-              <span className="material-symbols-outlined text-lg">notifications</span>
-              <span className="w-2 h-2 rounded-full bg-primary absolute top-1.5 right-1.5"></span>
-            </button>
-            <div className="flex items-center gap-sm pl-md border-l border-outline-variant/30">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary-container to-tertiary-container flex items-center justify-center text-xs font-bold text-on-primary-container shadow-sm border border-primary/30">
-                SX
-              </div>
-              <div className="hidden md:flex flex-col text-left">
-                <span className="text-xs font-medium text-on-surface leading-tight font-label-md">
-                  SupervisorX
-                </span>
-                <span className="text-[10px] text-on-surface-variant font-code-sm">
-                  Research Assistant
-                </span>
-              </div>
-            </div>
-          </div>
         </header>
 
         {/* MAIN CONTAINER */}
