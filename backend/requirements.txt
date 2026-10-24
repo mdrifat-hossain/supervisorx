@@ -3,3 +3,4 @@ uvicorn[standard]
 arxiv>=4.0.0
 requests>=2.31.0
 psycopg[binary]>=3.2.0
+pymupdf>=1.23.0

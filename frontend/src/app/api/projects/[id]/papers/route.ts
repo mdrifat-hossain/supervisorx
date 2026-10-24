@@ -31,9 +31,11 @@ export async function GET(
       );
     }
 
-    if (year && year !== "all" && !isNaN(Number(year))) {
-      values.push(Number(year));
-      conditions.push(`year = $${values.length}`);
+    const statusParam = searchParams.get("status");
+    if (statusParam === "analyzed") {
+      conditions.push("analysis_status = 'analyzed'");
+    } else if (statusParam === "pending") {
+      conditions.push("(analysis_status IS NULL OR analysis_status != 'analyzed')");
     }
 
     let orderByClause = "downloaded_at DESC";
@@ -70,7 +72,13 @@ export async function GET(
         file_size,
         file_size_label,
         tags,
-        downloaded_at
+        downloaded_at,
+        COALESCE(analysis_status, 'pending') AS status,
+        analyzed_at,
+        insights,
+        chunks_count,
+        figures_count,
+        vectors_count
       FROM project_papers
       WHERE ${conditions.join(" AND ")}
       ORDER BY ${orderByClause};

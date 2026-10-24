@@ -33,6 +33,7 @@ export async function GET(
     const startYear = searchParams.get("start_year");
     const endYear = searchParams.get("end_year");
     const minScore = searchParams.get("min_score") || "7";
+    const excludeIds = searchParams.get("exclude_ids") || "";
 
     if (!query.trim()) {
       return NextResponse.json(
@@ -46,6 +47,7 @@ export async function GET(
     )}&limit=${limit}&min_score=${minScore}`;
     if (startYear) endpoint += `&start_year=${startYear}`;
     if (endYear) endpoint += `&end_year=${endYear}`;
+    if (excludeIds) endpoint += `&exclude_ids=${encodeURIComponent(excludeIds)}`;
 
     const data = await fetchFromBackend(endpoint);
     return NextResponse.json({ ...data, projectId: id });

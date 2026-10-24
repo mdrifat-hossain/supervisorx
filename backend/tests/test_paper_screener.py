@@ -337,6 +337,35 @@ class TestOpenAlexAndDownload(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    @patch("arxiv_service.generate_academic_query", return_value="Transformer Text")
+    @patch("arxiv_service.fetch_arxiv_candidates")
+    @patch("arxiv_service.fetch_openalex_candidates", return_value=[])
+    @patch("arxiv_service.screen_candidates")
+    def test_iterative_search_and_screen_exclude_ids(self, mock_screen, mock_oa, mock_fetch, mock_query):
+        from arxiv_service import iterative_search_and_screen
+
+        mock_fetch.return_value = [
+            {"paper_id": "2401.0001", "title": "Paper One", "summary": "Abstract 1"},
+            {"paper_id": "2401.0002", "title": "Paper Two", "summary": "Abstract 2"},
+        ]
+        mock_screen.return_value = [
+            {"paper_id": "2401.0002", "title": "Paper Two", "relevance_score": 9, "is_relevant": True}
+        ]
+
+        # Pass 2401.0001 as exclude_id
+        result = iterative_search_and_screen(
+            research_objective="Transformer Text",
+            target_count=1,
+            exclude_ids=["2401.0001"],
+            batch_size=5,
+        )
+
+        # 2401.0001 should be excluded completely
+        returned_ids = [p["paper_id"] for p in result["papers"]]
+        self.assertNotIn("2401.0001", returned_ids)
+        self.assertIn("2401.0002", returned_ids)
+        self.assertIn("2401.0001", result["screened_ids"])
+
 
 if __name__ == "__main__":
     unittest.main()

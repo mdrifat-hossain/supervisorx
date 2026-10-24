@@ -3,7 +3,7 @@ import hmac
 import shutil
 import tempfile
 from urllib.parse import quote, urlsplit, urlunsplit
-from typing import Optional
+from typing import Optional, Union, List
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
@@ -89,6 +89,7 @@ class SearchRequest(BaseModel):
     end_year: Optional[int] = None
     min_score: Optional[int] = 7
     api_key: Optional[str] = None
+    exclude_ids: Optional[Union[List[str], str]] = None
 
 
 @app.get("/")
@@ -109,6 +110,7 @@ def search_arxiv_papers(
     end_year: Optional[int] = Query(None, description="End year filter"),
     min_score: int = Query(7, ge=1, le=10, description="Minimum relevance threshold (1-10)"),
     api_key: Optional[str] = Query(None, description="Optional OpenRouter API key"),
+    exclude_ids: Optional[str] = Query(None, description="Comma-separated IDs of papers to exclude/ignore"),
 ):
     """
     Search arXiv preprints and iteratively screen abstracts using OpenRouter LLM
@@ -122,6 +124,7 @@ def search_arxiv_papers(
             end_year=end_year,
             min_score=min_score,
             api_key=api_key,
+            exclude_ids=exclude_ids,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -145,6 +148,7 @@ def search_endpoint(req: SearchRequest):
             end_year=req.end_year,
             min_score=req.min_score or 7,
             api_key=req.api_key,
+            exclude_ids=req.exclude_ids,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -207,3 +211,257 @@ def get_downloaded_papers():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class BatchAnalysisRequest(BaseModel):
+    paper_ids: List[str]
+    projectId: str
+    api_key: Optional[str] = None
+
+
+class SingleAnalysisRequest(BaseModel):
+    paper_id: str
+    projectId: str
+    api_key: Optional[str] = None
+
+
+@app.post("/api/projects/{project_id}/papers/analyze-batch")
+def analyze_papers_batch(
+    project_id: str,
+    req: BatchAnalysisRequest,
+    x_internal_api_key: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Queues and executes sequential analysis across multiple papers."""
+    import uuid
+    import threading
+    from services.paper_analysis_pipeline import run_sequential_paper_analysis, get_db_connection
+
+    _require_project_access(x_user_id, x_internal_api_key, project_id)
+
+    if not req.paper_ids:
+        raise HTTPException(status_code=400, detail="paper_ids list cannot be empty")
+
+    job_id = f"job-{uuid.uuid4().hex[:12]}"
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO paper_processing_jobs (
+                    id, project_id, status, current_stage, progress_percent,
+                    total_papers, processed_papers, current_paper_title
+                ) VALUES (%s, %s, 'pending', 'validating', 0, %s, 0, 'Queued for Sequential Processing')
+                """,
+                (job_id, project_id, len(req.paper_ids)),
+            )
+        conn.commit()
+
+    thread = threading.Thread(
+        target=run_sequential_paper_analysis,
+        args=(job_id, project_id, req.paper_ids, req.api_key),
+        daemon=True,
+    )
+    thread.start()
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "total_papers": len(req.paper_ids),
+        "status": "processing",
+    }
+
+
+@app.post("/api/projects/{project_id}/papers/{paper_id}/analyze")
+def analyze_single_paper_endpoint(
+    project_id: str,
+    paper_id: str,
+    req: SingleAnalysisRequest,
+    x_internal_api_key: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Queues a single paper for analysis."""
+    import uuid
+    import threading
+    from services.paper_analysis_pipeline import run_sequential_paper_analysis, get_db_connection
+
+    _require_project_access(x_user_id, x_internal_api_key, project_id)
+
+    job_id = f"job-{uuid.uuid4().hex[:12]}"
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO paper_processing_jobs (
+                    id, project_id, paper_id, status, current_stage, progress_percent,
+                    total_papers, processed_papers, current_paper_title
+                ) VALUES (%s, %s, %s, 'pending', 'validating', 0, 1, 0, 'Initializing Analysis')
+                """,
+                (job_id, project_id, paper_id),
+            )
+        conn.commit()
+
+    thread = threading.Thread(
+        target=run_sequential_paper_analysis,
+        args=(job_id, project_id, [paper_id], req.api_key),
+        daemon=True,
+    )
+    thread.start()
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "paper_id": paper_id,
+        "status": "processing",
+    }
+
+
+@app.get("/api/projects/{project_id}/analysis/status")
+def get_analysis_status(
+    project_id: str,
+    x_internal_api_key: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Returns the latest active or completed analysis job for the project."""
+    from services.paper_analysis_pipeline import get_db_connection
+
+    _require_project_access(x_user_id, x_internal_api_key, project_id)
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, project_id, paper_id, status, current_stage, progress_percent,
+                       total_papers, processed_papers, current_paper_title, error_message,
+                       created_at, updated_at, completed_at
+                FROM paper_processing_jobs
+                WHERE project_id = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (project_id,),
+            )
+            row = cur.fetchone()
+
+        if not row:
+            return {"success": True, "job": None}
+
+        job = {
+            "id": row[0],
+            "project_id": row[1],
+            "paper_id": row[2],
+            "status": row[3],
+            "current_stage": row[4],
+            "progress_percent": row[5],
+            "total_papers": row[6],
+            "processed_papers": row[7],
+            "current_paper_title": row[8],
+            "error_message": row[9],
+            "created_at": str(row[10]),
+            "updated_at": str(row[11]),
+            "completed_at": str(row[12]) if row[12] else None,
+        }
+        return {"success": True, "job": job}
+
+
+@app.get("/api/projects/{project_id}/papers/{paper_id}/analysis")
+def get_paper_analysis_details(
+    project_id: str,
+    paper_id: str,
+    x_internal_api_key: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Returns stored analysis insights, text chunks, and visual items for a paper."""
+    from services.paper_analysis_pipeline import get_db_connection
+
+    _require_project_access(x_user_id, x_internal_api_key, project_id)
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, paper_id, title, authors, venue, year, analysis_status,
+                       analyzed_at, insights, chunks_count, figures_count, vectors_count,
+                       analysis_error
+                FROM project_papers
+                WHERE project_id = %s AND (paper_id = %s OR id = %s)
+                LIMIT 1
+                """,
+                (project_id, paper_id, paper_id),
+            )
+            paper_row = cur.fetchone()
+            if not paper_row:
+                raise HTTPException(status_code=404, detail="Paper not found")
+
+            # Fetch visual items
+            cur.execute(
+                """
+                SELECT id, page_number, figure_number, caption, visual_type,
+                       visual_description, visible_labels, axes_and_units, relationships_or_trends
+                FROM paper_visual_items
+                WHERE project_id = %s AND paper_id = %s
+                ORDER BY page_number ASC
+                """,
+                (project_id, paper_id),
+            )
+            visual_rows = cur.fetchall()
+
+        visual_items = [
+            {
+                "id": v[0],
+                "page_number": v[1],
+                "figure_number": v[2],
+                "caption": v[3],
+                "visual_type": v[4],
+                "visual_description": v[5],
+                "visible_labels": v[6],
+                "axes_and_units": v[7],
+                "relationships_or_trends": v[8],
+            }
+            for v in visual_rows
+        ]
+
+        return {
+            "success": True,
+            "paper": {
+                "id": paper_row[0],
+                "paper_id": paper_row[1],
+                "title": paper_row[2],
+                "authors": paper_row[3],
+                "venue": paper_row[4],
+                "year": paper_row[5],
+                "status": paper_row[6] or "pending",
+                "analyzed_at": str(paper_row[7]) if paper_row[7] else None,
+                "insights": paper_row[8] or {},
+                "chunks_count": paper_row[9] or 0,
+                "figures_count": paper_row[10] or 0,
+                "vectors_count": paper_row[11] or 0,
+                "error": paper_row[12],
+            },
+            "visual_items": visual_items,
+        }
+
+
+@app.delete("/api/projects/{project_id}/papers/{paper_id}")
+def delete_project_paper(
+    project_id: str,
+    paper_id: str,
+    x_internal_api_key: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Deletes a paper and all associated vectors, chunks, and visual records."""
+    from services.paper_analysis_pipeline import get_db_connection
+
+    _require_project_access(x_user_id, x_internal_api_key, project_id)
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM paper_vectors WHERE project_id = %s AND (paper_id = %s OR id = %s)", (project_id, paper_id, paper_id))
+            cur.execute("DELETE FROM paper_text_chunks WHERE project_id = %s AND (paper_id = %s OR id = %s)", (project_id, paper_id, paper_id))
+            cur.execute("DELETE FROM paper_visual_items WHERE project_id = %s AND (paper_id = %s OR id = %s)", (project_id, paper_id, paper_id))
+            cur.execute("DELETE FROM project_papers WHERE project_id = %s AND (paper_id = %s OR id = %s)", (project_id, paper_id, paper_id))
+            cur.execute("UPDATE projects SET papers_count = (SELECT COUNT(*) FROM project_papers WHERE project_id = %s), updated_at = NOW() WHERE id = %s", (project_id, project_id))
+        conn.commit()
+
+    return {"success": True, "deleted_paper_id": paper_id}

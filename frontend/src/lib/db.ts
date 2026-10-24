@@ -95,6 +95,31 @@ export async function initProjectsTable() {
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
     ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS storage_bucket TEXT;
     ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS storage_path TEXT;
+    ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS analysis_status VARCHAR(50) DEFAULT 'pending';
+    ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS analyzed_at TIMESTAMP WITH TIME ZONE;
+    ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS insights JSONB DEFAULT '{}'::jsonb;
+    ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS analysis_error TEXT;
+    ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS chunks_count INTEGER DEFAULT 0;
+    ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS figures_count INTEGER DEFAULT 0;
+    ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS vectors_count INTEGER DEFAULT 0;
+    CREATE INDEX IF NOT EXISTS idx_project_papers_status ON project_papers(project_id, analysis_status);
+
+    CREATE TABLE IF NOT EXISTS paper_processing_jobs (
+      id VARCHAR(128) PRIMARY KEY,
+      project_id VARCHAR(64) NOT NULL,
+      paper_id VARCHAR(128),
+      status VARCHAR(50) NOT NULL DEFAULT 'pending',
+      current_stage VARCHAR(100) DEFAULT 'validating',
+      progress_percent INTEGER DEFAULT 0,
+      total_papers INTEGER DEFAULT 1,
+      processed_papers INTEGER DEFAULT 0,
+      current_paper_title TEXT,
+      error_message TEXT,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      completed_at TIMESTAMP WITH TIME ZONE
+    );
+
     UPDATE projects
     SET owner_user_id = (SELECT id FROM "user" LIMIT 1)
     WHERE owner_user_id IS NULL AND (SELECT COUNT(*) FROM "user") = 1;

@@ -8,7 +8,7 @@ import os
 import re
 import time
 import logging
-from typing import List, Dict, Optional, Any, Set
+from typing import List, Dict, Optional, Any, Set, Union
 import arxiv
 import requests
 
@@ -291,6 +291,7 @@ def iterative_search_and_screen(
     max_candidates_to_screen: int = 60,
     batch_size: int = 15,
     api_key: Optional[str] = None,
+    exclude_ids: Optional[Union[List[str], str]] = None,
 ) -> Dict[str, Any]:
     """
     Executes iterative batch candidate retrieval and LLM abstract relevance screening.
@@ -311,6 +312,7 @@ def iterative_search_and_screen(
             "search_status": "empty_query",
             "message": "Empty research objective provided.",
             "formulated_query": "",
+            "screened_ids": [],
         }
 
     # Step 1: Query Formulation via LLM / Clean Heuristic
@@ -327,6 +329,16 @@ def iterative_search_and_screen(
     effective_budget = max(max_candidates_to_screen, oversample_target * 2)
 
     seen_ids: Set[str] = set()
+    if exclude_ids:
+        if isinstance(exclude_ids, str):
+            raw_ex_list = [x.strip() for x in exclude_ids.split(",") if x.strip()]
+        else:
+            raw_ex_list = list(exclude_ids)
+        for raw_id in raw_ex_list:
+            canonical = normalize_arxiv_id(raw_id)
+            if canonical:
+                seen_ids.add(canonical)
+
     seen_titles: Set[str] = set()
     qualifying_papers: List[Dict] = []
     total_screened = 0
@@ -452,6 +464,7 @@ def iterative_search_and_screen(
         "message": message,
         "papers": selected_papers,
         "count": len(selected_papers),
+        "screened_ids": list(seen_ids),
     }
 
 
@@ -462,6 +475,7 @@ def search_papers(
     end_year: Optional[int] = None,
     min_score: int = 7,
     api_key: Optional[str] = None,
+    exclude_ids: Optional[Union[List[str], str]] = None,
 ) -> List[Dict]:
     """
     Public search API that delegates to iterative_search_and_screen and returns qualifying papers.
@@ -473,6 +487,7 @@ def search_papers(
         end_year=end_year,
         min_score=min_score,
         api_key=api_key,
+        exclude_ids=exclude_ids,
     )
     return res.get("papers", [])
 

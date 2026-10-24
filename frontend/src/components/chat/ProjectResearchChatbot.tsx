@@ -273,6 +273,7 @@ export default function ProjectResearchChatbot({
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
   const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
+  const allSessionScreenedIds = useRef<Set<string>>(new Set());
   const [isSearching, setIsSearching] = useState(false);
   const [searchStage, setSearchStage] = useState(0);
 
@@ -799,13 +800,38 @@ export default function ProjectResearchChatbot({
     setIsSearching(true);
 
     try {
+      // Collect all previously seen, screened, and downloaded paper IDs across this conversation
+      const excludedIdsSet = new Set<string>();
+      downloadedIds.forEach((id) => {
+        if (id) excludedIdsSet.add(id);
+      });
+      messages.forEach((m) => {
+        if (m.papers) {
+          m.papers.forEach((p) => {
+            if (p.paperId) excludedIdsSet.add(p.paperId);
+          });
+        }
+      });
+      allSessionScreenedIds.current.forEach((id) => excludedIdsSet.add(id));
+
+      const excludeParam = Array.from(excludedIdsSet).slice(0, 80).join(",");
+
       const searchUrl = `/api/projects/${projectId}/papers/search?query=${encodeURIComponent(
         cleanQuery
-      )}&limit=${effectiveLimit}&start_year=${effectiveStartYear}&end_year=${effectiveEndYear}&min_score=7`;
+      )}&limit=${effectiveLimit}&start_year=${effectiveStartYear}&end_year=${effectiveEndYear}&min_score=7${
+        excludeParam ? `&exclude_ids=${encodeURIComponent(excludeParam)}` : ""
+      }`;
       const res = await fetch(searchUrl);
       const data = await res.json();
 
+      if (data && Array.isArray(data.screened_ids)) {
+        data.screened_ids.forEach((id: string) => allSessionScreenedIds.current.add(id));
+      }
+
       if (res.ok && data.success && Array.isArray(data.papers) && data.papers.length > 0) {
+        data.papers.forEach((p: any) => {
+          if (p.paper_id) allSessionScreenedIds.current.add(p.paper_id);
+        });
         const totalScreened = data.candidates_screened || data.papers.length;
         const serverMessage = data.message;
 
