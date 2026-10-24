@@ -59,15 +59,43 @@ function getRelativeTime(dateStr?: string): string {
   return `${diffDays}d ago`;
 }
 
+// Pipeline Stages Configuration
+const PIPELINE_STEPS = [
+  { id: "load", label: "PDF Cloud Load", desc: "Retrieve PDF from Supabase Storage" },
+  { id: "text", label: "Structure & Chunks", desc: "PyMuPDF section & text extraction" },
+  { id: "vlm", label: "Multimodal Visual AI", desc: "Nemotron VLM figures & diagrams" },
+  { id: "vector", label: "pgvector Indexing", desc: "2048-D embeddings & database write" },
+];
+
+function getActiveStepIndex(stage: string): number {
+  switch (stage) {
+    case "validating":
+      return 0;
+    case "extracting_text":
+    case "extracting_figures":
+      return 1;
+    case "analyzing_figures":
+      return 2;
+    case "generating_embeddings":
+    case "saving_vectors":
+    case "finalizing":
+      return 3;
+    case "completed":
+      return 4;
+    default:
+      return 0;
+  }
+}
+
 const STAGE_LABELS: Record<string, string> = {
-  validating: "Validating Supabase PDF & metadata",
+  validating: "Downloading preprint from Supabase Storage",
   extracting_text: "Extracting document structure & section-aware chunks",
-  extracting_figures: "Extracting visual figures, charts, and tables",
+  extracting_figures: "Detecting figures, charts, diagrams & image tables",
   analyzing_figures: "Analyzing visual diagrams with Nemotron Vision VLM",
-  generating_embeddings: "Vectorizing embeddings with Nemotron-3-embed (2048-D)",
-  saving_vectors: "Persisting vectors & chunks in Supabase pgvector",
+  generating_embeddings: "Generating 2048-D dense embeddings via Nemotron",
+  saving_vectors: "Persisting chunks and vectors in Supabase pgvector",
   finalizing: "Synthesizing research claims & citation cross-references",
-  completed: "Analysis Complete & pgvector Indexed",
+  completed: "Analysis Complete & pgvector Synchronized",
 };
 
 export default function PaperAnalyzeCenter({
@@ -85,12 +113,16 @@ export default function PaperAnalyzeCenter({
   const [sortOption, setSortOption] = useState<"newest" | "az" | "za" | "size">("newest");
 
   // Dynamic AI Progress Engine State
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [analyzingPaperId, setAnalyzingPaperId] = useState<string | null>(null);
   const [showProgressBar, setShowProgressBar] = useState(false);
   const [progressLevel, setProgressLevel] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [badgeText, setBadgeText] = useState("AI Analysis Engine Ready");
-  const [stepText, setStepText] = useState("Current task: Idle");
-  const [etaText, setEtaText] = useState("");
+  const [currentStage, setCurrentStage] = useState("validating");
+  const [activePaperTitle, setActivePaperTitle] = useState("");
+  const [processedCount, setProcessedCount] = useState(0);
+  const [totalToProcess, setTotalToProcess] = useState(1);
+  const [jobCompleted, setJobCompleted] = useState(false);
 
   // Selected paper insights modal
   const [insightsPaper, setInsightsPaper] = useState<Paper | null>(null);
@@ -141,69 +173,61 @@ export default function PaperAnalyzeCenter({
     fetchPapers();
   }, [fetchPapers]);
 
-  // Check active background job status on mount and poll when analyzing
-  const pollActiveJob = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/analysis`);
-      if (!res.ok) return null;
-      const data = await res.json();
-      return data.job;
-    } catch {
-      return null;
-    }
-  }, [projectId]);
-
+  // Scoped Job Polling (Fixes the flicker / stale 100% bug completely)
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    if (!isAnalyzing || !activeJobId) return;
 
-    if (isAnalyzing || showProgressBar) {
-      const runPoll = async () => {
-        const job = await pollActiveJob();
-        if (job) {
-          if (job.status === "processing" || job.status === "pending") {
-            setShowProgressBar(true);
-            setIsAnalyzing(true);
-            const total = job.total_papers || 1;
-            const processed = job.processed_papers || 0;
-            const rawPct = job.progress_percent ?? Math.round((processed / total) * 100);
-            setProgressLevel(rawPct);
+    let isMounted = true;
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `/api/projects/${encodeURIComponent(projectId)}/analysis?job_id=${encodeURIComponent(activeJobId)}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const job = data.job;
 
-            setBadgeText(`Analyzing Paper ${Math.min(processed + 1, total)} of ${total}...`);
-            const stageDesc = STAGE_LABELS[job.current_stage] || job.current_stage || "Processing";
-            const currentTitle = job.current_paper_title
-              ? ` for ${job.current_paper_title.slice(0, 48)}${job.current_paper_title.length > 48 ? "..." : ""}`
-              : "";
-            setStepText(`Current task: ${stageDesc}${currentTitle} • `);
-            setEtaText(`Progress: ${rawPct}%`);
-          } else if (job.status === "completed") {
-            setProgressLevel(100);
-            setBadgeText("All Selected Analyzed & Synced");
-            setStepText("✓ Research citations vectorized and pgvector index synchronized.");
-            setEtaText("");
-            setIsAnalyzing(false);
-            fetchPapers();
-            // Automatically hide progress bar after 6 seconds of completion
-            setTimeout(() => {
-              setShowProgressBar(false);
-            }, 6000);
-          } else if (job.status === "failed") {
-            setIsAnalyzing(false);
-            setBadgeText("Analysis Failed");
-            setStepText(`Error: ${job.error_message || "Could not complete analysis"}`);
-            setEtaText("");
-            fetchPapers();
+        // Strictly verify that the returned job matches the currently active job ID
+        if (!job || job.id !== activeJobId || !isMounted) return;
+
+        if (job.status === "processing" || job.status === "pending") {
+          const total = job.total_papers || totalToProcess;
+          const processed = job.processed_papers || 0;
+          setProcessedCount(processed);
+          setTotalToProcess(total);
+          setCurrentStage(job.current_stage || "validating");
+          if (job.current_paper_title) {
+            setActivePaperTitle(job.current_paper_title);
           }
+          // Calculate realistic live progress
+          const serverPct = job.progress_percent ?? Math.round((processed / total) * 100);
+          setProgressLevel(Math.max(serverPct, 8));
+        } else if (job.status === "completed") {
+          setProgressLevel(100);
+          setCurrentStage("completed");
+          setIsAnalyzing(false);
+          setJobCompleted(true);
+          setAnalyzingPaperId(null);
+          fetchPapers(); // Refresh table to show new Analyzed badges
+        } else if (job.status === "failed") {
+          setIsAnalyzing(false);
+          setAnalyzingPaperId(null);
+          alert(`Analysis encountered an error: ${job.error_message || "Could not complete analysis"}`);
+          fetchPapers();
         }
-      };
+      } catch (err) {
+        console.error("Analysis poll error:", err);
+      }
+    };
 
-      runPoll();
-      timer = setInterval(runPoll, 1800);
-    }
+    poll();
+    const interval = setInterval(poll, 1400);
 
     return () => {
-      if (timer) clearInterval(timer);
+      isMounted = false;
+      clearInterval(interval);
     };
-  }, [isAnalyzing, showProgressBar, pollActiveJob, fetchPapers]);
+  }, [isAnalyzing, activeJobId, projectId, totalToProcess, fetchPapers]);
 
   // Counters
   const totalCount = papers.length;
@@ -259,23 +283,26 @@ export default function PaperAnalyzeCenter({
 
   // Trigger batch analysis via backend pipeline
   const triggerBatchAnalysis = async () => {
-    // If user has specific papers selected, analyze those. Otherwise select all pending (not analyzed) papers!
     const targetIds =
       selectedPaperIds.length > 0
         ? selectedPaperIds
         : papers.filter((p) => p.status === "pending").map((p) => p.id);
 
     if (targetIds.length === 0) {
-      alert("No pending papers to analyze. Please select papers or upload new preprints.");
+      alert("No unanalyzed papers to analyze. Please select papers or upload new preprints.");
       return;
     }
 
+    // Initialize progress state immediately without stale 100% or flickering
+    setActiveJobId(null);
+    setJobCompleted(false);
     setShowProgressBar(true);
     setIsAnalyzing(true);
-    setProgressLevel(0);
-    setBadgeText(`Queuing ${targetIds.length} Papers for Analysis...`);
-    setStepText(`Current task: Initializing sequential analysis pipeline • `);
-    setEtaText("ETA: Starting...");
+    setProgressLevel(5);
+    setCurrentStage("validating");
+    setActivePaperTitle(`Preparing batch analysis for ${targetIds.length} preprints...`);
+    setProcessedCount(0);
+    setTotalToProcess(targetIds.length);
 
     try {
       const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/analysis`, {
@@ -284,7 +311,8 @@ export default function PaperAnalyzeCenter({
         body: JSON.stringify({ paper_ids: targetIds }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to start analysis");
+      if (!res.ok || !data.job_id) throw new Error(data.error || "Failed to start analysis");
+      setActiveJobId(data.job_id); // Set the scoped job ID
       setSelectedPaperIds([]);
     } catch (err: any) {
       alert(`Could not start analysis: ${err.message}`);
@@ -298,12 +326,17 @@ export default function PaperAnalyzeCenter({
     const paper = papers.find((p) => p.id === id);
     if (!paper) return;
 
+    // Highlight row being analyzed and initialize progress bar
+    setAnalyzingPaperId(id);
+    setActiveJobId(null);
+    setJobCompleted(false);
     setShowProgressBar(true);
     setIsAnalyzing(true);
-    setProgressLevel(0);
-    setBadgeText(`Analyzing ${paper.title.slice(0, 32)}...`);
-    setStepText(`Current task: Validating Supabase PDF & metadata for ${paper.title.slice(0, 24)} • `);
-    setEtaText("ETA: Calculating...");
+    setProgressLevel(8);
+    setCurrentStage("validating");
+    setActivePaperTitle(paper.title);
+    setProcessedCount(0);
+    setTotalToProcess(1);
 
     try {
       const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/analysis`, {
@@ -312,11 +345,13 @@ export default function PaperAnalyzeCenter({
         body: JSON.stringify({ paper_id: id }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to start analysis");
+      if (!res.ok || !data.job_id) throw new Error(data.error || "Failed to start analysis");
+      setActiveJobId(data.job_id); // Set the scoped job ID
     } catch (err: any) {
       alert(`Could not analyze paper: ${err.message}`);
       setIsAnalyzing(false);
       setShowProgressBar(false);
+      setAnalyzingPaperId(null);
     }
   };
 
@@ -464,6 +499,9 @@ export default function PaperAnalyzeCenter({
   const removeUpload = (id: string) => {
     setUploads((prev) => prev.filter((u) => u.id !== id));
   };
+
+  // Determine active stepper index
+  const activeStepIdx = getActiveStepIndex(currentStage);
 
   return (
     <div className="bg-background text-on-surface font-body-md text-body-md antialiased min-h-screen flex selection:bg-primary-container selection:text-on-primary-container">
@@ -683,7 +721,7 @@ export default function PaperAnalyzeCenter({
             </div>
           )}
 
-          {/* TAB 2: PAPER ANALYZE SECTION (Fully Functionalized) */}
+          {/* TAB 2: PAPER ANALYZE SECTION */}
           {activeTab === "analyze" && (
             <div className="workspace-tab-panel flex flex-col space-y-gutter w-full">
               {/* Header & Stats Banner */}
@@ -713,74 +751,178 @@ export default function PaperAnalyzeCenter({
                 </div>
               </div>
 
-              {/* Progress Bar Card: Hidden by default, reveals when analyzing */}
+              {/* Robust AI Analysis Engine Progress Card with Step-by-Step Pipeline Tracker */}
               {showProgressBar && (
-                <div className="glass-panel p-lg rounded-xl border border-primary/35 relative overflow-hidden ink-shadow bg-surface-container-low transition-all duration-500 animate-fadeIn">
+                <div className="glass-panel p-lg rounded-xl border border-primary/40 relative overflow-hidden ink-shadow bg-surface-container-low transition-all duration-500 animate-fadeIn">
                   <div className="absolute -right-20 -top-20 w-56 h-56 bg-primary/10 blur-[90px] rounded-full pointer-events-none"></div>
                   <div className="absolute -left-20 -bottom-20 w-56 h-56 bg-tertiary/10 blur-[90px] rounded-full pointer-events-none"></div>
                   <div className="flex flex-col gap-md relative z-10">
-                    {/* Top Row: Title, Glowing Badge, Live Metrics */}
+                    {/* Top Row: Title, Glowing Badge, Live Metrics, Dismiss Button */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-sm">
                       <div className="flex items-center gap-md">
-                        <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary border border-primary/30 flex items-center justify-center shadow-[0_0_15px_rgba(77,142,255,0.25)]">
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all ${
+                            jobCompleted
+                              ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-[0_0_15px_rgba(52,211,153,0.3)]"
+                              : "bg-primary/20 text-primary border-primary/30 shadow-[0_0_15px_rgba(77,142,255,0.25)]"
+                          }`}
+                        >
                           <span
-                            className={`material-symbols-outlined text-xl text-primary ${
+                            className={`material-symbols-outlined text-xl ${
                               isAnalyzing ? "animate-spin" : ""
                             }`}
-                            style={{ animationDuration: "6s" }}
+                            style={{ animationDuration: "5s" }}
                           >
-                            autorenew
+                            {jobCompleted ? "check_circle" : "autorenew"}
                           </span>
                         </div>
                         <div>
                           <div className="font-label-md text-label-md text-on-surface font-semibold flex items-center gap-2 flex-wrap">
                             <span className="text-base text-on-surface font-bold">
-                              Active AI Analysis Engine
+                              AI Paper Analysis Engine
                             </span>
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-code-sm bg-primary/15 text-primary border border-primary/30 shadow-[0_0_10px_rgba(173,198,255,0.2)]">
-                              <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
-                              <span>{badgeText}</span>
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-code-sm border ${
+                                jobCompleted
+                                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                                  : "bg-primary/15 text-primary border-primary/30 shadow-[0_0_10px_rgba(173,198,255,0.2)]"
+                              }`}
+                            >
+                              {!jobCompleted && (
+                                <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+                              )}
+                              <span>
+                                {jobCompleted
+                                  ? "All Selected Analyzed & Vectorized"
+                                  : totalToProcess > 1
+                                  ? `Analyzing Paper ${Math.min(processedCount + 1, totalToProcess)} of ${totalToProcess}`
+                                  : "Analyzing Research Paper"}
+                              </span>
                             </span>
                           </div>
                           <div className="font-code-sm text-code-sm text-on-surface-variant mt-0.5">
-                            <span>
-                              {analyzedCount} of {totalCount} Papers Fully Indexed &amp; Analyzed
-                            </span>
+                            {jobCompleted ? (
+                              <span className="text-emerald-400 font-medium">
+                                ✓ Full semantic embeddings stored in Supabase pgvector
+                              </span>
+                            ) : (
+                              <span>
+                                {processedCount} of {totalToProcess} Papers Completed • {analyzedCount} Total Indexed
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-baseline sm:text-right gap-2 sm:flex-col sm:gap-0">
-                        <span className="font-code-sm text-headline-lg text-primary font-bold tracking-tight drop-shadow-[0_0_12px_rgba(77,142,255,0.4)]">
-                          {progressLevel}%
-                        </span>
-                        <span className="font-code-sm text-[11px] text-on-surface-variant">
-                          Completed
-                        </span>
+
+                      <div className="flex items-center gap-md self-end sm:self-auto">
+                        <div className="flex items-baseline sm:text-right gap-2 sm:flex-col sm:gap-0">
+                          <span
+                            className={`font-code-sm text-headline-lg font-bold tracking-tight drop-shadow-[0_0_12px_rgba(77,142,255,0.4)] ${
+                              jobCompleted ? "text-emerald-400" : "text-primary"
+                            }`}
+                          >
+                            {progressLevel}%
+                          </span>
+                          <span className="font-code-sm text-[11px] text-on-surface-variant">
+                            {jobCompleted ? "Completed" : "In Progress"}
+                          </span>
+                        </div>
+                        {jobCompleted && (
+                          <button
+                            onClick={() => setShowProgressBar(false)}
+                            className="p-1.5 rounded-lg bg-surface-container-high hover:bg-surface-variant text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer border border-outline-variant/30"
+                            title="Dismiss Progress Card"
+                          >
+                            <span className="material-symbols-outlined text-base">close</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 
-                    {/* Progress Bar: Sleek Illuminated Gradient */}
+                    {/* Progress Bar: Sleek Gradient */}
                     <div className="relative w-full bg-surface-container-highest/80 h-3.5 rounded-full overflow-hidden p-0.5 border border-outline-variant/40 shadow-inner">
                       <div
-                        className="relative h-full bg-gradient-to-r from-blue-600 via-primary-container to-tertiary-container rounded-full transition-all duration-700 ease-out shadow-[0_0_18px_#4d8eff] overflow-hidden"
+                        className={`relative h-full rounded-full transition-all duration-700 ease-out overflow-hidden ${
+                          jobCompleted
+                            ? "bg-gradient-to-r from-emerald-600 to-teal-400 shadow-[0_0_18px_#34d399]"
+                            : "bg-gradient-to-r from-blue-600 via-primary-container to-tertiary-container shadow-[0_0_18px_#4d8eff]"
+                        }`}
                         style={{ width: `${progressLevel}%` }}
                       >
                         <div className="absolute inset-0 animate-shimmer"></div>
                       </div>
                     </div>
 
-                    {/* Bottom Row: Current Processing Phase Details & Current Paper (Cognitive Graph Sync removed) */}
+                    {/* Visual 4-Stage Stepper: Clearly explains what stage is currently running */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-1 border-t border-outline-variant/20">
+                      {PIPELINE_STEPS.map((step, idx) => {
+                        const isDone = jobCompleted || activeStepIdx > idx;
+                        const isCurrent = !jobCompleted && activeStepIdx === idx;
+                        return (
+                          <div
+                            key={step.id}
+                            className={`p-2 rounded-lg border flex items-center gap-2 transition-all ${
+                              isDone
+                                ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                                : isCurrent
+                                ? "bg-primary/15 border-primary/40 text-primary shadow-sm"
+                                : "bg-surface-container-high/40 border-outline-variant/20 text-on-surface-variant/60"
+                            }`}
+                          >
+                            <div className="flex-shrink-0">
+                              {isDone ? (
+                                <span className="material-symbols-outlined text-base text-emerald-400">
+                                  check_circle
+                                </span>
+                              ) : isCurrent ? (
+                                <span className="material-symbols-outlined text-base text-primary animate-spin">
+                                  progress_activity
+                                </span>
+                              ) : (
+                                <span className="material-symbols-outlined text-base text-outline">
+                                  radio_button_unchecked
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-semibold truncate leading-tight font-label-md">
+                                {step.label}
+                              </div>
+                              <div className="text-[9px] truncate text-on-surface-variant/70 font-code-sm">
+                                {isCurrent ? "Active Stage" : step.desc}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Bottom Row: Active Paper Title & Stage Task Details */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between text-code-sm text-on-surface-variant gap-1 pt-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-sm text-primary">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="material-symbols-outlined text-sm text-primary flex-shrink-0">
                           auto_awesome
                         </span>
-                        <span className="text-xs">
-                          {stepText}
-                          {etaText && (
-                            <span className="text-primary font-medium ml-1">{etaText}</span>
+                        <span className="text-xs truncate">
+                          <span className="font-medium text-on-surface">
+                            {jobCompleted ? "Done: " : "Current task: "}
+                          </span>
+                          <span className="text-primary font-medium">
+                            {STAGE_LABELS[currentStage] || currentStage}
+                          </span>
+                          {activePaperTitle && (
+                            <span className="text-on-surface-variant ml-1 truncate">
+                              • {activePaperTitle}
+                            </span>
                           )}
                         </span>
+                      </div>
+                      <div className="text-[11px] font-code-sm text-outline flex-shrink-0 self-end sm:self-auto">
+                        {jobCompleted ? (
+                          <span className="text-emerald-400 font-medium">100% Vectorized</span>
+                        ) : (
+                          <span>ETA: Processing sequentially</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -901,10 +1043,16 @@ export default function PaperAnalyzeCenter({
 
                       {!loadingPapers && filteredPapers.map((paper) => {
                         const isChecked = selectedPaperIds.includes(paper.id);
+                        const isPaperActivelyAnalyzing = analyzingPaperId === paper.id;
+
                         return (
                           <tr
                             key={paper.id}
-                            className="paper-row hover:bg-surface-container-high/40 transition-colors"
+                            className={`paper-row transition-colors ${
+                              isPaperActivelyAnalyzing
+                                ? "bg-primary/5 border-l-2 border-primary"
+                                : "hover:bg-surface-container-high/40"
+                            }`}
                           >
                             <td className="p-md text-center">
                               <input
@@ -918,13 +1066,21 @@ export default function PaperAnalyzeCenter({
                               <div className="flex items-start gap-md">
                                 <div
                                   className={`w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                                    paper.status === "analyzed"
+                                    isPaperActivelyAnalyzing
+                                      ? "bg-primary/20 border-primary/40 text-primary shadow-[0_0_10px_rgba(77,142,255,0.3)]"
+                                      : paper.status === "analyzed"
                                       ? "bg-primary/10 border-primary/20 text-primary"
                                       : "bg-amber-500/10 border-amber-500/20 text-amber-400"
                                   }`}
                                 >
-                                  <span className="material-symbols-outlined text-lg">
-                                    article
+                                  <span
+                                    className={`material-symbols-outlined text-lg ${
+                                      isPaperActivelyAnalyzing ? "animate-spin" : ""
+                                    }`}
+                                  >
+                                    {isPaperActivelyAnalyzing
+                                      ? "progress_activity"
+                                      : "article"}
                                   </span>
                                 </div>
                                 <div>
@@ -973,7 +1129,12 @@ export default function PaperAnalyzeCenter({
                               </div>
                             </td>
                             <td className="p-md status-cell">
-                              {paper.status === "analyzed" ? (
+                              {isPaperActivelyAnalyzing ? (
+                                <span className="status-badge inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-code-sm bg-primary/20 text-primary border border-primary/30 shadow-[0_0_8px_rgba(77,142,255,0.25)] animate-pulse">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+                                  <span>Analyzing AI...</span>
+                                </span>
+                              ) : paper.status === "analyzed" ? (
                                 <span className="status-badge inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-code-sm bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                                   <span className="material-symbols-outlined text-xs">
                                     check_circle

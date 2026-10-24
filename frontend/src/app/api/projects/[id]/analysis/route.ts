@@ -32,9 +32,13 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const jobId = searchParams.get("job_id");
+    const query = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
+
     const apiKey = process.env.INTERNAL_API_KEY;
     const backendRes = await fetchFromBackend(
-      `/api/projects/${encodeURIComponent(id)}/analysis/status`,
+      `/api/projects/${encodeURIComponent(id)}/analysis/status${query}`,
       {
         headers: {
           "X-Internal-Api-Key": apiKey || "",

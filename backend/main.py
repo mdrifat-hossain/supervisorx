@@ -320,6 +320,7 @@ def analyze_single_paper_endpoint(
 @app.get("/api/projects/{project_id}/analysis/status")
 def get_analysis_status(
     project_id: str,
+    job_id: Optional[str] = Query(None),
     x_internal_api_key: Optional[str] = Header(None),
     x_user_id: Optional[str] = Header(None),
 ):
@@ -330,18 +331,31 @@ def get_analysis_status(
 
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT id, project_id, paper_id, status, current_stage, progress_percent,
-                       total_papers, processed_papers, current_paper_title, error_message,
-                       created_at, updated_at, completed_at
-                FROM paper_processing_jobs
-                WHERE project_id = %s
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                (project_id,),
-            )
+            if job_id:
+                cur.execute(
+                    """
+                    SELECT id, project_id, paper_id, status, current_stage, progress_percent,
+                           total_papers, processed_papers, current_paper_title, error_message,
+                           created_at, updated_at, completed_at
+                    FROM paper_processing_jobs
+                    WHERE project_id = %s AND id = %s
+                    LIMIT 1
+                    """,
+                    (project_id, job_id),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id, project_id, paper_id, status, current_stage, progress_percent,
+                           total_papers, processed_papers, current_paper_title, error_message,
+                           created_at, updated_at, completed_at
+                    FROM paper_processing_jobs
+                    WHERE project_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    (project_id,),
+                )
             row = cur.fetchone()
 
         if not row:
