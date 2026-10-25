@@ -21,6 +21,11 @@ export async function GET(
       );
     }
 
+    // Update last_accessed_at asynchronously
+    pool.query("UPDATE projects SET last_accessed_at = NOW() WHERE id = $1", [id]).catch((err) =>
+      console.warn("Failed to update last_accessed_at:", err)
+    );
+
     return NextResponse.json({ success: true, project: result.rows[0] });
   } catch (error) {
     console.error("GET /api/projects/[id] error:", error);

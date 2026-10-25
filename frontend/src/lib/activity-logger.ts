@@ -21,6 +21,10 @@ export async function logProjectActivity(
        VALUES ($1, $2, $3, $4, $5, NOW())`,
       [id, projectId, activityType, description || "", JSON.stringify(metadata || {})]
     );
+    await pool.query(
+      `UPDATE projects SET last_accessed_at = NOW() WHERE id = $1`,
+      [projectId]
+    );
   } catch (err) {
     console.error("Failed to log project activity:", err);
   }

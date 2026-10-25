@@ -175,6 +175,14 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
               </span>
             </div>
             <Link
+              href={`/projects/${projectId}/analysis?tab=upload`}
+              className="px-3.5 py-2 bg-surface-container-high border border-outline-variant/40 hover:bg-surface-variant text-on-surface rounded-lg text-xs font-label-md font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+              title="Upload PDF manuscript to project"
+            >
+              <span className="material-symbols-outlined text-base text-primary">cloud_upload</span>
+              <span>Upload PDF</span>
+            </Link>
+            <Link
               href={`/projects/${projectId}/chatbot`}
               className="px-3.5 py-2 bg-primary text-on-primary hover:brightness-110 rounded-lg text-xs font-label-md font-semibold flex items-center gap-1.5 transition-all shadow-sm shadow-primary/20"
             >
@@ -380,6 +388,13 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                             </button>
                           )}
                           <Link
+                            href={`/projects/${projectId}/analysis?tab=upload`}
+                            className="px-4 py-1.5 bg-surface-container-high border border-outline-variant/40 hover:bg-surface-variant text-on-surface rounded-lg text-xs font-label-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-sm text-primary">cloud_upload</span>
+                            <span>Upload PDF</span>
+                          </Link>
+                          <Link
                             href={`/projects/${projectId}/chatbot`}
                             className="px-4 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-label-md font-semibold hover:brightness-110 cursor-pointer"
                           >
@@ -392,10 +407,10 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                 ) : (
                   filteredPapers.map((paper) => {
                     const isChecked = selectedPaperIds.includes(paper.id);
-                    const openUrl = paper.entry_url || paper.pdf_url;
                     const privatePdfUrl = paper.storage_path
                       ? `/api/projects/${encodeURIComponent(projectId)}/papers/${encodeURIComponent(paper.paper_id)}/file`
                       : null;
+                    const openUrl = paper.entry_url || paper.pdf_url || privatePdfUrl || "#";
                     return (
                       <tr
                         key={paper.id}
@@ -603,19 +618,28 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                 >
                   Close
                 </button>
-                {(inspectPaper.entry_url || inspectPaper.pdf_url) && (
-                  <a
-                    href={inspectPaper.entry_url || inspectPaper.pdf_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 rounded-lg text-xs font-label-md bg-primary text-on-primary hover:brightness-110 font-bold flex items-center gap-1.5 cursor-pointer shadow-md shadow-primary/20"
-                  >
-                    <span className="material-symbols-outlined text-sm">
-                      open_in_new
-                    </span>
-                    <span>Open Paper Link</span>
-                  </a>
-                )}
+                {(() => {
+                  const targetUrl =
+                    inspectPaper.entry_url ||
+                    inspectPaper.pdf_url ||
+                    (inspectPaper.storage_path
+                      ? `/api/projects/${encodeURIComponent(projectId)}/papers/${encodeURIComponent(inspectPaper.paper_id)}/file`
+                      : null);
+                  if (!targetUrl) return null;
+                  return (
+                    <a
+                      href={targetUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 rounded-lg text-xs font-label-md bg-primary text-on-primary hover:brightness-110 font-bold flex items-center gap-1.5 cursor-pointer shadow-md shadow-primary/20"
+                    >
+                      <span className="material-symbols-outlined text-sm">
+                        open_in_new
+                      </span>
+                      <span>Open Document</span>
+                    </a>
+                  );
+                })()}
               </div>
             </div>
           </div>

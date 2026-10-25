@@ -112,6 +112,20 @@ export default function PaperAnalyzeCenter({
   const [statusFilter, setStatusFilter] = useState<"all" | "analyzed" | "pending">("all");
   const [sortOption, setSortOption] = useState<"newest" | "az" | "za" | "size">("newest");
 
+  // Staged Upload State
+  const [stagedFile, setStagedFile] = useState<File | null>(null);
+  const [customTitle, setCustomTitle] = useState("");
+  const [customAuthors, setCustomAuthors] = useState("");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadSuccessInfo, setUploadSuccessInfo] = useState<{
+    id: string;
+    title: string;
+    filename: string;
+    sizeLabel: string;
+  } | null>(null);
+
   // Dynamic AI Progress Engine State
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [analyzingPaperId, setAnalyzingPaperId] = useState<string | null>(null);
@@ -172,6 +186,16 @@ export default function PaperAnalyzeCenter({
   useEffect(() => {
     fetchPapers();
   }, [fetchPapers]);
+
+  // Synchronize active tab from URL query params (e.g. ?tab=upload)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("tab") === "upload") {
+        setActiveTab("upload");
+      }
+    }
+  }, []);
 
   // Scoped Job Polling (Fixes the flicker / stale 100% bug completely)
   useEffect(() => {
@@ -394,90 +418,122 @@ export default function PaperAnalyzeCenter({
     setSelectedPaperIds([]);
   };
 
-  // Upload actions (preserved exactly)
-  const uploadFiles = async (files: File[]) => {
-    for (const file of files) {
-      const uploadId = `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      if (!file.name.toLowerCase().endsWith(".pdf") || file.type !== "application/pdf") {
-        setUploads((prev) => [
-          {
-            id: uploadId,
-            name: file.name,
-            sizeLabel: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-            type: "file",
-            progress: 0,
-            status: "paused",
-            warning: "Only PDF files are accepted.",
-          },
-          ...prev,
-        ]);
-        continue;
-      }
-      if (file.size === 0 || file.size > 15 * 1024 * 1024) {
-        setUploads((prev) => [
-          {
-            id: uploadId,
-            name: file.name,
-            sizeLabel: `${(file.size / (1024 * 1024)).toFixed(1)} MB • PDF`,
-            type: "file",
-            progress: 0,
-            status: "paused",
-            warning: "PDF files must be 15 MB or smaller.",
-          },
-          ...prev,
-        ]);
-        continue;
+  // PDF Selection and Staged Upload Actions
+  const handleSelectFile = (file: File) => {
+    setUploadError(null);
+    setUploadSuccessInfo(null);
+
+    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+      setUploadError("Only PDF documents (.pdf) are supported at this time.");
+      return;
+    }
+    if (file.size === 0 || file.size > 15 * 1024 * 1024) {
+      setUploadError("PDF file size must be between 1 byte and 15 MB.");
+      return;
+    }
+
+    setStagedFile(file);
+    const cleaned = file.name
+      .replace(/\.pdf$/i, "")
+      .replace(/[_-]+/g, " ")
+      .trim();
+    setCustomTitle(cleaned || "Research Paper");
+    setCustomAuthors("");
+  };
+
+  const handleConfirmUpload = async () => {
+    if (!stagedFile) return;
+    const finalTitle = customTitle.trim() || stagedFile.name.replace(/\.pdf$/i, "").trim() || "Research Paper";
+    if (!finalTitle) {
+      setUploadError("Please provide a name or title for this PDF.");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(25);
+    setUploadError(null);
+
+    const uploadId = `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const sizeMb = (stagedFile.size / (1024 * 1024)).toFixed(1);
+    const sizeLabel = `${sizeMb} MB • PDF`;
+
+    // Add to transfers history
+    setUploads((prev) => [
+      {
+        id: uploadId,
+        name: finalTitle,
+        sizeLabel,
+        type: "file",
+        progress: 35,
+        status: "active",
+        subtext: "Uploading to private Supabase Storage…",
+      },
+      ...prev,
+    ]);
+
+    try {
+      const formData = new FormData();
+      formData.set("file", stagedFile);
+      formData.set("title", finalTitle);
+      if (customAuthors.trim()) {
+        formData.set("authors", customAuthors.trim());
       }
 
-      const transfer: UploadTransfer = {
-        id: uploadId,
-        name: file.name,
-        sizeLabel: `${(file.size / (1024 * 1024)).toFixed(1)} MB • PDF`,
-        type: "file",
-        progress: 25,
-        status: "active",
-        subtext: "Uploading to private project storage…",
-      };
-      setUploads((prev) => [transfer, ...prev]);
-      try {
-        const body = new FormData();
-        body.set("file", file);
-        const response = await fetch(
-          `/api/projects/${encodeURIComponent(projectId)}/papers/upload`,
-          {
-            method: "POST",
-            body,
-          }
-        );
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Upload failed");
-        setUploads((prev) =>
-          prev.map((item) =>
-            item.id === uploadId
-              ? {
-                  ...item,
-                  progress: 100,
-                  status: "completed",
-                  subtext: "Stored in private project storage.",
-                }
-              : item
-          )
-        );
-        fetchPapers();
-      } catch (error) {
-        setUploads((prev) =>
-          prev.map((item) =>
-            item.id === uploadId
-              ? {
-                  ...item,
-                  progress: 0,
-                  status: "paused",
-                  warning: error instanceof Error ? error.message : "Upload failed.",
-                }
-              : item
-          )
-        );
+      setUploadProgress(65);
+
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/papers/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to upload PDF");
       }
+
+      setUploadProgress(100);
+      setUploads((prev) =>
+        prev.map((u) =>
+          u.id === uploadId
+            ? { ...u, progress: 100, status: "completed", subtext: "Saved to Supabase Storage & Database" }
+            : u
+        )
+      );
+
+      const paperId = data.paper?.id || data.paper?.paper_id || uploadId;
+      setUploadSuccessInfo({
+        id: paperId,
+        title: finalTitle,
+        filename: stagedFile.name,
+        sizeLabel,
+      });
+
+      // Refresh papers list so it appears in analysis table immediately with status pending
+      await fetchPapers();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      setUploadError(msg);
+      setUploads((prev) =>
+        prev.map((u) =>
+          u.id === uploadId
+            ? { ...u, progress: 0, status: "paused", warning: msg }
+            : u
+        )
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleResetUpload = () => {
+    setStagedFile(null);
+    setCustomTitle("");
+    setCustomAuthors("");
+    setUploadError(null);
+    setUploadSuccessInfo(null);
+    setUploadProgress(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -485,14 +541,13 @@ export default function PaperAnalyzeCenter({
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      void uploadFiles(Array.from(e.dataTransfer.files));
+      handleSelectFile(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      void uploadFiles(Array.from(e.target.files));
-      e.target.value = "";
+      handleSelectFile(e.target.files[0]);
     }
   };
 
@@ -572,7 +627,7 @@ export default function PaperAnalyzeCenter({
             </div>
           </div>
 
-          {/* TAB 1: UPLOAD SECTION (Preserved) */}
+          {/* TAB 1: UPLOAD SECTION */}
           {activeTab === "upload" && (
             <div className="workspace-tab-panel flex flex-col space-y-gutter w-full">
               <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-md">
@@ -581,8 +636,8 @@ export default function PaperAnalyzeCenter({
                     Research Upload Center
                   </h1>
                   <p className="text-on-surface-variant mt-xs max-w-[700px]">
-                    Integrate research papers, model architectures, and structured benchmark
-                    datasets into your SupervisorX workspace.
+                    Upload PDF research manuscripts, preprints, and papers directly into your SupervisorX workspace. 
+                    Set custom titles and analyze them with multimodal AI.
                   </p>
                 </div>
                 <div className="flex items-center gap-sm">
@@ -599,88 +654,333 @@ export default function PaperAnalyzeCenter({
               <input
                 ref={fileInputRef}
                 type="file"
-                multiple
                 accept="application/pdf,.pdf"
                 className="hidden"
                 onChange={handleFileInputChange}
               />
 
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDropFiles}
-                onClick={() => fileInputRef.current?.click()}
-                className={`glass-panel rounded-xl p-2xl border-2 border-dashed transition-all duration-500 group relative overflow-hidden text-center cursor-pointer ${
-                  isDragging
-                    ? "border-primary bg-primary/5"
-                    : "border-outline-variant/50 hover:border-primary/50"
-                }`}
-              >
-                <div className="absolute -top-24 -right-24 w-72 h-72 bg-primary/5 blur-[100px] rounded-full pointer-events-none"></div>
-                <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-tertiary/5 blur-[100px] rounded-full pointer-events-none"></div>
-                <div className="relative flex flex-col items-center justify-center space-y-6 py-8 w-full max-w-[680px] mx-auto text-center">
-                  <div className="w-20 h-20 bg-surface-container rounded-full flex items-center justify-center ink-shadow group-hover:scale-110 transition-transform duration-500 border border-outline-variant/30">
-                    <span
-                      className="material-symbols-outlined text-4xl text-primary"
-                      style={{ fontVariationSettings: "'FILL' 1" }}
-                    >
-                      upload_file
-                    </span>
+              {/* Error Notification Banner */}
+              {uploadError && (
+                <div className="p-4 rounded-xl bg-error/10 border border-error/30 text-error flex items-start justify-between gap-3 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-lg shrink-0">error</span>
+                    <span className="text-xs font-medium">{uploadError}</span>
                   </div>
-                  <div>
-                    <h2 className="font-headline-md text-2xl font-bold text-on-surface mb-2">
-                      Drag and drop research papers
-                    </h2>
-                    <p className="text-on-surface-variant text-body-md text-sm sm:text-base leading-relaxed max-w-[580px] mx-auto">
-                      Accepts PDF (Max 15 MB each)
-                    </p>
+                  <button
+                    onClick={() => setUploadError(null)}
+                    className="text-error hover:opacity-75 transition-opacity"
+                    title="Dismiss"
+                  >
+                    <span className="material-symbols-outlined text-sm">close</span>
+                  </button>
+                </div>
+              )}
+
+              {/* SUCCESS BANNER & NEXT ACTIONS */}
+              {uploadSuccessInfo ? (
+                <div className="glass-panel rounded-2xl p-6 sm:p-8 border border-emerald-500/40 bg-gradient-to-b from-emerald-500/10 to-surface-container-low shadow-lg space-y-6 animate-in fade-in duration-300">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined text-2xl">check_circle</span>
+                    </div>
+                    <div>
+                      <h2 className="font-headline-md text-xl font-bold text-on-surface">
+                        Manuscript Successfully Uploaded!
+                      </h2>
+                      <p className="text-xs sm:text-sm text-on-surface-variant mt-1 leading-relaxed">
+                        Your PDF has been securely stored in Supabase Storage and registered in your project database. 
+                        It is ready in your library and marked as <span className="text-amber-400 font-semibold">Not Analyzed</span> in the analysis center.
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
+
+                  {/* Upload Summary Card */}
+                  <div className="p-4 rounded-xl bg-surface-container-high/60 border border-outline-variant/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-xl">picture_as_pdf</span>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-on-surface text-sm">
+                          {uploadSuccessInfo.title}
+                        </div>
+                        <div className="text-[11px] text-on-surface-variant flex items-center gap-2 mt-0.5">
+                          <span>{uploadSuccessInfo.filename}</span>
+                          <span>•</span>
+                          <span>{uploadSuccessInfo.sizeLabel}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-code-sm bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                        <span className="material-symbols-outlined text-xs">schedule</span>
+                        <span>Not Analyzed</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
                     <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        fileInputRef.current?.click();
+                      onClick={() => {
+                        setActiveTab("analyze");
+                        if (uploadSuccessInfo?.id) {
+                          setSelectedPaperIds([uploadSuccessInfo.id]);
+                        }
                       }}
-                      className="px-xl py-3 rounded-lg bg-primary text-on-primary font-label-md text-label-md font-semibold flex items-center gap-2 hover:brightness-110 transition-all cursor-pointer shadow-md"
+                      className="px-5 py-2.5 rounded-lg bg-primary text-on-primary font-label-md text-xs font-semibold hover:brightness-110 active:scale-95 transition-all flex items-center gap-2 shadow-md cursor-pointer"
                     >
-                      <span className="material-symbols-outlined text-lg">folder_open</span>
-                      <span>Browse PDF Files</span>
+                      <span className="material-symbols-outlined text-base">psychology</span>
+                      <span>Go to Paper Analyze</span>
+                    </button>
+
+                    <Link
+                      href={`/projects/${projectId}/library`}
+                      className="px-4 py-2.5 rounded-lg bg-surface-container-high border border-outline-variant/40 hover:bg-surface-variant text-on-surface font-label-md text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-base text-primary">library_books</span>
+                      <span>View in Paper Library</span>
+                    </Link>
+
+                    <button
+                      onClick={handleResetUpload}
+                      className="px-4 py-2.5 rounded-lg bg-surface-container border border-outline-variant/30 hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface font-label-md text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer ml-auto"
+                    >
+                      <span className="material-symbols-outlined text-base">add</span>
+                      <span>Upload Another PDF</span>
                     </button>
                   </div>
                 </div>
-              </div>
+              ) : stagedFile ? (
+                /* STAGED FILE CONFIGURATION & CUSTOM TITLE CARD */
+                <div className="glass-panel rounded-2xl p-6 sm:p-8 border border-primary/30 bg-surface-container-low shadow-xl space-y-6 animate-in fade-in duration-200">
+                  <div className="flex items-start justify-between gap-4 border-b border-outline-variant/20 pb-4">
+                    <div>
+                      <h2 className="font-headline-md text-xl font-bold text-on-surface flex items-center gap-2">
+                        <span className="material-symbols-outlined text-primary text-2xl">edit_document</span>
+                        <span>Configure Manuscript Details</span>
+                      </h2>
+                      <p className="text-xs text-on-surface-variant mt-1">
+                        Review the selected PDF and customize its title/name before uploading to your project database.
+                      </p>
+                    </div>
 
-              {uploads.length > 0 && (
-                <div className="space-y-sm">
-                  {uploads.map((u) => (
-                    <div
-                      key={u.id}
-                      className="p-md rounded-xl bg-surface-container border border-outline-variant/30 flex items-center justify-between"
+                    <button
+                      type="button"
+                      onClick={handleResetUpload}
+                      disabled={isUploading}
+                      className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg hover:bg-surface-container-high transition-colors cursor-pointer"
+                      title="Cancel file selection"
                     >
-                      <div className="flex items-center gap-md">
-                        <span className="material-symbols-outlined text-primary">description</span>
-                        <div>
-                          <div className="text-sm font-medium text-on-surface">{u.name}</div>
-                          <div className="text-xs text-on-surface-variant">
-                            {u.subtext || u.sizeLabel}
-                          </div>
+                      <span className="material-symbols-outlined text-lg">close</span>
+                    </button>
+                  </div>
+
+                  {/* Selected PDF file summary row */}
+                  <div className="p-3.5 rounded-xl bg-surface-container-high/60 border border-outline-variant/30 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/25 text-red-400 flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-xl">picture_as_pdf</span>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-on-surface truncate">
+                          {stagedFile.name}
+                        </div>
+                        <div className="text-[11px] text-on-surface-variant font-mono">
+                          {(stagedFile.size / (1024 * 1024)).toFixed(2)} MB • PDF Document
                         </div>
                       </div>
-                      <div className="flex items-center gap-md">
-                        <span className="text-xs text-primary font-bold">{u.progress}%</span>
-                        <button
-                          onClick={() => removeUpload(u.id)}
-                          className="text-on-surface-variant hover:text-error"
-                        >
-                          <span className="material-symbols-outlined text-sm">close</span>
-                        </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className="px-3 py-1.5 rounded-lg text-xs font-label-md bg-surface-container-highest hover:bg-surface-variant border border-outline-variant/40 text-on-surface transition-colors cursor-pointer shrink-0"
+                    >
+                      Change File
+                    </button>
+                  </div>
+
+                  {/* Text Input Section for PDF Title / Name */}
+                  <div className="space-y-4 pt-1">
+                    <div>
+                      <label className="block text-xs font-label-md font-semibold text-on-surface mb-1.5">
+                        PDF Title / Paper Name <span className="text-primary">*</span>
+                      </label>
+                      <p className="text-[11px] text-on-surface-variant mb-2">
+                        Set the name or title for this PDF. This will appear across your Paper Analysis, Paper Library, and citation graph.
+                      </p>
+                      <input
+                        type="text"
+                        value={customTitle}
+                        onChange={(e) => setCustomTitle(e.target.value)}
+                        disabled={isUploading}
+                        placeholder="e.g. Attention Is All You Need"
+                        className="w-full px-4 py-2.5 rounded-xl bg-surface-container-high border border-outline-variant/40 focus:border-primary focus:ring-1 focus:ring-primary text-sm text-on-surface placeholder:text-outline focus:outline-none transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-label-md font-semibold text-on-surface mb-1.5">
+                        Authors / Research Group <span className="text-on-surface-variant font-normal">(Optional)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={customAuthors}
+                        onChange={(e) => setCustomAuthors(e.target.value)}
+                        disabled={isUploading}
+                        placeholder="e.g. Ashish Vaswani, Noam Shazeer, Niki Parmar (Google Research)"
+                        className="w-full px-4 py-2.5 rounded-xl bg-surface-container-high border border-outline-variant/40 focus:border-primary focus:ring-1 focus:ring-primary text-sm text-on-surface placeholder:text-outline focus:outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Progress Bar (Visible while uploading) */}
+                  {isUploading && (
+                    <div className="space-y-2 pt-2 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between text-xs font-code-sm text-on-surface-variant">
+                        <span className="flex items-center gap-1.5 text-primary">
+                          <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                          <span>Uploading to private Supabase Storage and indexing database...</span>
+                        </span>
+                        <span className="font-bold text-primary font-mono">{uploadProgress}%</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-surface-container-highest overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-primary to-emerald-400 transition-all duration-300 rounded-full"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
                       </div>
                     </div>
-                  ))}
+                  )}
+
+                  {/* Submit / Cancel Buttons */}
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-outline-variant/20">
+                    <button
+                      type="button"
+                      onClick={handleResetUpload}
+                      disabled={isUploading}
+                      className="px-4 py-2 rounded-lg text-xs font-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleConfirmUpload}
+                      disabled={isUploading || !customTitle.trim()}
+                      className="px-6 py-2.5 rounded-lg bg-primary text-on-primary font-label-md text-xs font-semibold hover:brightness-110 active:scale-95 transition-all flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isUploading ? (
+                        <>
+                          <span className="material-symbols-outlined text-sm animate-spin">
+                            progress_activity
+                          </span>
+                          <span>Uploading PDF...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-sm">cloud_upload</span>
+                          <span>Upload PDF to Workspace</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* DRAG AND DROP ZONE (EMPTY STATE) */
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDropFiles}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`glass-panel rounded-2xl p-8 sm:p-12 border-2 border-dashed transition-all duration-300 group relative overflow-hidden text-center cursor-pointer ${
+                    isDragging
+                      ? "border-primary bg-primary/10 shadow-[0_0_20px_rgba(77,142,255,0.2)]"
+                      : "border-outline-variant/50 hover:border-primary/50 hover:bg-surface-container-low/60"
+                  }`}
+                >
+                  <div className="absolute -top-24 -right-24 w-72 h-72 bg-primary/5 blur-[100px] rounded-full pointer-events-none"></div>
+                  <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-tertiary/5 blur-[100px] rounded-full pointer-events-none"></div>
+                  
+                  <div className="relative flex flex-col items-center justify-center space-y-4 py-6 w-full max-w-[620px] mx-auto text-center">
+                    <div className="w-16 h-16 bg-surface-container rounded-2xl flex items-center justify-center ink-shadow group-hover:scale-105 transition-transform duration-300 border border-outline-variant/30">
+                      <span
+                        className="material-symbols-outlined text-3xl text-primary"
+                        style={{ fontVariationSettings: "'FILL' 1" }}
+                      >
+                        cloud_upload
+                      </span>
+                    </div>
+
+                    <div>
+                      <h2 className="font-headline-md text-xl font-bold text-on-surface mb-1.5">
+                        Drag and drop your research PDF manuscript
+                      </h2>
+                      <p className="text-on-surface-variant text-xs sm:text-sm leading-relaxed max-w-[480px] mx-auto">
+                        Accepts PDF documents up to 15 MB. You can customize the paper title before saving.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fileInputRef.current?.click();
+                        }}
+                        className="px-5 py-2.5 rounded-lg bg-primary text-on-primary font-label-md text-xs font-semibold flex items-center gap-2 hover:brightness-110 active:scale-95 transition-all cursor-pointer shadow-md shadow-primary/20"
+                      >
+                        <span className="material-symbols-outlined text-base">folder_open</span>
+                        <span>Browse PDF File</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* RECENT UPLOADS TRANSFERS LIST */}
+              {uploads.length > 0 && (
+                <div className="space-y-sm pt-2">
+                  <div className="text-xs font-label-md font-semibold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm">history</span>
+                    <span>Session Upload Transfers ({uploads.length})</span>
+                  </div>
+                  <div className="space-y-sm">
+                    {uploads.map((u) => (
+                      <div
+                        key={u.id}
+                        className="p-md rounded-xl bg-surface-container border border-outline-variant/30 flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-md">
+                          <span className="material-symbols-outlined text-primary">description</span>
+                          <div>
+                            <div className="text-sm font-medium text-on-surface">{u.name}</div>
+                            <div className="text-xs text-on-surface-variant">
+                              {u.subtext || u.sizeLabel}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-md">
+                          <span className={`text-xs font-bold ${u.status === "completed" ? "text-emerald-400" : "text-primary"}`}>
+                            {u.status === "completed" ? "Complete" : `${u.progress}%`}
+                          </span>
+                          <button
+                            onClick={() => removeUpload(u.id)}
+                            className="text-on-surface-variant hover:text-error transition-colors"
+                            title="Remove from history"
+                          >
+                            <span className="material-symbols-outlined text-sm">close</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -1322,55 +1622,7 @@ export default function PaperAnalyzeCenter({
 
         {/* Footer */}
         <footer className="w-full py-2xl border-t border-outline-variant/20 bg-surface-container-lowest mt-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-lg px-lg max-w-container-max mx-auto">
-            <div className="lg:col-span-2">
-              <span className="font-headline-md text-headline-md font-bold text-primary block mb-md">
-                SupervisorX
-              </span>
-              <p className="text-on-surface-variant font-body-md text-body-md">
-                Empowering the next generation of researchers with technical cognitive clarity and
-                AI-driven synthesis.
-              </p>
-            </div>
-            <div className="flex flex-col gap-sm">
-              <span className="font-label-md text-label-md text-on-surface font-bold">
-                Resources
-              </span>
-              <a className="text-on-surface-variant font-label-md text-label-md hover:text-primary transition-all duration-300" href="#docs">
-                Documentation
-              </a>
-              <a className="text-on-surface-variant font-label-md text-label-md hover:text-primary transition-all duration-300" href="#api">
-                API
-              </a>
-              <a className="text-on-surface-variant font-label-md text-label-md hover:text-primary transition-all duration-300" href="#status">
-                Status
-              </a>
-            </div>
-            <div className="flex flex-col gap-sm">
-              <span className="font-label-md text-label-md text-on-surface font-bold">
-                Legal
-              </span>
-              <a className="text-on-surface-variant font-label-md text-label-md hover:text-primary transition-all duration-300" href="#privacy">
-                Privacy Policy
-              </a>
-              <a className="text-on-surface-variant font-label-md text-label-md hover:text-primary transition-all duration-300" href="#terms">
-                Terms of Service
-              </a>
-            </div>
-            <div className="flex flex-col gap-sm lg:col-span-2 items-end justify-end">
-              <p className="text-on-surface-variant font-label-md text-label-md text-right">
-                © 2026 SupervisorX AI Research. All rights reserved.
-              </p>
-              <div className="flex gap-md mt-sm">
-                <span className="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer transition-colors">
-                  language
-                </span>
-                <span className="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer transition-colors">
-                  terminal
-                </span>
-              </div>
-            </div>
-          </div>
+
         </footer>
       </div>
     </div>

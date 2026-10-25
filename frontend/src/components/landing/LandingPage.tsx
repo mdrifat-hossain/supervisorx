@@ -103,14 +103,13 @@ export default function LandingPage() {
       {/* TopNavBar */}
       <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-outline-variant/30 shadow-sm transition-all duration-300">
         <div className="flex justify-between items-center px-lg py-sm max-w-container-max mx-auto h-16">
-          <Link href="/" className="flex items-center gap-sm">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <span
-                className="material-symbols-outlined text-on-primary text-[20px]"
-                style={{ fontVariationSettings: "'FILL' 1" }}
-              >
-                sync
-              </span>
+          <Link href="/" className="flex items-center gap-sm group transition-opacity hover:opacity-90">
+            <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform shrink-0">
+              <img
+                src="/synergy.png"
+                alt="SupervisorX Logo"
+                className="w-full h-full object-contain"
+              />
             </div>
             <span className="font-headline-md text-headline-md font-bold text-primary tracking-tight">
               SupervisorX
@@ -718,15 +717,14 @@ export default function LandingPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-lg mb-2xl">
             <div className="col-span-2">
               <div className="flex items-center gap-sm mb-md">
-                <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
-                  <span
-                    className="material-symbols-outlined text-on-primary text-[16px]"
-                    style={{ fontVariationSettings: "'FILL' 1" }}
-                  >
-                    sync
-                  </span>
+                <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center shadow-sm shrink-0">
+                  <img
+                    src="/synergy.png"
+                    alt="SupervisorX Logo"
+                    className="w-full h-full object-contain"
+                  />
                 </div>
-                <span className="font-headline-md text-headline-md font-bold text-primary">
+                <span className="font-headline-md text-headline-md font-bold text-primary tracking-tight">
                   SupervisorX
                 </span>
               </div>

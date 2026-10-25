@@ -93,6 +93,7 @@ export async function initProjectsTable() {
     CREATE INDEX IF NOT EXISTS idx_project_papers_project ON project_papers(project_id);
     CREATE INDEX IF NOT EXISTS idx_project_papers_year ON project_papers(year);
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
     ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS storage_bucket TEXT;
     ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS storage_path TEXT;
     ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS analysis_status VARCHAR(50) DEFAULT 'pending';

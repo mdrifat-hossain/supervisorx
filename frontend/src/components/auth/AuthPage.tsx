@@ -185,11 +185,13 @@ export default function AuthPage({ initialMode = "login" }: AuthPageProps) {
           <section className="flex-1 flex flex-col justify-center items-center p-lg relative z-20">
 
             {/* Mobile Logo */}
-            <Link href="/" className="md:hidden absolute top-xl right-lg flex items-center gap-sm">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <span className="material-symbols-outlined text-on-primary text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  sync
-                </span>
+            <Link href="/" className="md:hidden absolute top-xl right-lg flex items-center gap-sm group">
+              <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-sm shrink-0">
+                <img
+                  src="/synergy.png"
+                  alt="SupervisorX Logo"
+                  className="w-full h-full object-contain"
+                />
               </div>
               <span className="font-headline-md text-headline-md font-bold text-primary tracking-tight">SupervisorX</span>
             </Link>
@@ -400,11 +402,13 @@ export default function AuthPage({ initialMode = "login" }: AuthPageProps) {
           <section className="flex-1 flex flex-col justify-center items-center p-lg relative z-20">
 
             {/* Mobile Logo */}
-            <Link href="/" className="md:hidden absolute top-xl right-lg flex items-center gap-sm">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <span className="material-symbols-outlined text-on-primary text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  sync
-                </span>
+            <Link href="/" className="md:hidden absolute top-xl right-lg flex items-center gap-sm group">
+              <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-sm shrink-0">
+                <img
+                  src="/synergy.png"
+                  alt="SupervisorX Logo"
+                  className="w-full h-full object-contain"
+                />
               </div>
               <span className="font-headline-md text-headline-md font-bold text-primary tracking-tight">SupervisorX</span>
             </Link>

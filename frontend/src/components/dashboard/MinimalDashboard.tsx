@@ -88,6 +88,42 @@ interface StickyNote {
   updated_at?: string;
 }
 
+interface RecentProjectActivityItem {
+  id: string;
+  title: string;
+  domain: string;
+  description: string;
+  color: string;
+  papers_count: number;
+  last_accessed_at: string;
+  last_access_label: string;
+  latest_activity: {
+    type: string;
+    description: string;
+    created_at: string;
+  } | null;
+}
+
+function getProjectColorBar(color?: string) {
+  switch (color) {
+    case "tertiary":
+      return "bg-tertiary";
+    case "secondary":
+      return "bg-secondary";
+    case "emerald":
+      return "bg-emerald-400";
+    case "amber":
+      return "bg-amber-400";
+    case "rose":
+      return "bg-rose-400";
+    case "cyan":
+      return "bg-cyan-400";
+    case "primary":
+    default:
+      return "bg-primary";
+  }
+}
+
 const PALETTE_CONFIGS: Record<
   "amber" | "emerald" | "sky" | "purple",
   {
@@ -395,6 +431,31 @@ export default function MinimalDashboard() {
     fetchActivity(cadenceRange);
   }, [cadenceRange, fetchActivity]);
 
+  // Recent projects with activity
+  const [recentProjects, setRecentProjects] = useState<RecentProjectActivityItem[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState(true);
+
+  const fetchRecentProjects = useCallback(async () => {
+    try {
+      setLoadingRecent(true);
+      const res = await fetch("/api/projects/recent");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.projects)) {
+          setRecentProjects(data.projects);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load recent projects", err);
+    } finally {
+      setLoadingRecent(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRecentProjects();
+  }, [fetchRecentProjects]);
+
   const filteredNotes = notes
     .filter((note) => {
       if (filterPalette === "pinned") return note.is_pinned;
@@ -419,27 +480,23 @@ export default function MinimalDashboard() {
       <AppSidebar activeTab="Dashboard" />
 
       {/* Main Dashboard Area */}
-      <main className="flex-1 overflow-y-auto custom-scrollbar bg-background">
+      <main className="flex-1 overflow-y-auto custom-scrollbar bg-background flex flex-col">
         {/* Header/TopBar */}
-        <header className="sticky top-0 z-10 flex justify-between items-center px-xl py-lg bg-background/80 backdrop-blur-md">
-          <div className="flex flex-col">
-            <h1 className="font-headline-lg text-headline-lg text-on-surface">
-              Research Overview
-            </h1>
-            <p className="font-body-md text-on-surface-variant">
-              Welcome back, Dr. Thorne. Your analysis engine is 98% complete.
-            </p>
+        <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-outline-variant/15 px-6 lg:px-8 py-4">
+          <div className="max-w-container-max mx-auto w-full flex justify-between items-center">
+            <div className="flex flex-col">
+              <h1 className="font-headline-lg text-headline-lg font-bold text-on-surface tracking-tight">
+                Research Overview
+              </h1>
+              <p className="font-body-md text-on-surface-variant text-[14px] mt-0.5">
+                Welcome back, Dr. Thorne. Your analysis engine is 98% complete.
+              </p>
+            </div>
           </div>
-          {/*
-          <div className="flex items-center gap-md">
-            <button className="bg-surface-container-high hover:bg-surface-variant border border-outline-variant/30 text-on-surface font-label-md px-lg py-sm rounded-xl transition-all active:scale-95 flex items-center gap-sm cursor-pointer">
-              <span className="material-symbols-outlined text-md">upload</span>
-              Upload Paper
-            </button>
-          </div> */}
         </header>
 
-        <div className="px-xl pb-2xl space-y-xl max-w-7xl">
+        {/* Scrollable Canvas Body */}
+        <div className="p-6 lg:p-8 max-w-container-max mx-auto w-full flex flex-col gap-6 pb-16">
           {/* System Resource Monitor */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-sm">
             <div className="bg-surface-container-low border border-outline-variant/20 px-md py-sm rounded-xl">
@@ -1086,94 +1143,72 @@ export default function MinimalDashboard() {
               <h3 className="font-headline-md text-headline-md text-on-surface">
                 Recent Project Activity
               </h3>
+              <Link
+                href="/projects"
+                className="text-xs font-label-md text-primary hover:underline flex items-center gap-1 group"
+              >
+                <span>View All Projects</span>
+                <span className="material-symbols-outlined text-[14px] group-hover:translate-x-0.5 transition-transform">
+                  arrow_forward
+                </span>
+              </Link>
             </div>
             <div className="space-y-sm">
-              {/* Project 1 */}
-              <div className="group flex items-center justify-between p-md bg-surface-container-highest/30 border border-outline-variant/10 hover:border-outline-variant/30 rounded-xl transition-all">
-                <div className="flex items-center gap-md">
-                  <div className="w-2 h-10 bg-tertiary rounded-full"></div>
-                  <div>
-                    <div className="font-label-md text-[15px] text-on-surface">
-                      Neural Synthesis V2
-                    </div>
-                    <div className="font-body-md text-on-surface-variant text-[13px] mt-0.5">
-                      Semantic indexing completed for 114 PDFs.
-                    </div>
-                  </div>
+              {loadingRecent ? (
+                Array.from({ length: 3 }).map((_, idx) => (
+                  <div
+                    key={`skeleton-recent-${idx}`}
+                    className="p-md bg-surface-container-highest/20 border border-outline-variant/10 rounded-xl h-20 animate-pulse"
+                  />
+                ))
+              ) : recentProjects.length === 0 ? (
+                <div className="py-8 text-center text-on-surface-variant font-code-sm text-xs bg-surface-container-highest/10 rounded-xl border border-dashed border-outline-variant/20">
+                  No recent projects found.
                 </div>
-                <div className="flex items-center gap-lg">
-                  <div className="font-code-sm text-[12px] text-on-surface-variant text-right">
-                    <div>Last access</div>
-                    <div className="text-on-surface mt-0.5">12m ago</div>
-                  </div>
-                  <Link
-                    href="/projects"
-                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-surface-variant text-on-surface-variant transition-colors cursor-pointer"
+              ) : (
+                recentProjects.map((project) => (
+                  <div
+                    key={project.id}
+                    className="group flex items-center justify-between p-md bg-surface-container-highest/30 border border-outline-variant/10 hover:border-outline-variant/30 rounded-xl transition-all"
                   >
-                    <span className="material-symbols-outlined text-[18px]">
-                      chevron_right
-                    </span>
-                  </Link>
-                </div>
-              </div>
-
-              {/* Project 2 */}
-              <div className="group flex items-center justify-between p-md bg-surface-container-highest/30 border border-outline-variant/10 hover:border-outline-variant/30 rounded-xl transition-all">
-                <div className="flex items-center gap-md">
-                  <div className="w-2 h-10 bg-primary rounded-full"></div>
-                  <div>
-                    <div className="font-label-md text-[15px] text-on-surface">
-                      Quantum Cognition
+                    <div className="flex items-center gap-md min-w-0">
+                      <div
+                        className={`w-2 h-10 ${getProjectColorBar(
+                          project.color
+                        )} rounded-full shrink-0`}
+                      ></div>
+                      <div className="min-w-0">
+                        <Link
+                          href={`/projects/${project.id}`}
+                          className="font-label-md text-[15px] text-on-surface hover:text-primary transition-colors truncate block"
+                          title={project.title}
+                        >
+                          {project.title}
+                        </Link>
+                        <div className="font-body-md text-on-surface-variant text-[13px] mt-0.5 truncate">
+                          {project.latest_activity?.description ||
+                            `${project.domain} • Workspace active`}
+                        </div>
+                      </div>
                     </div>
-                    <div className="font-body-md text-on-surface-variant text-[13px] mt-0.5">
-                      Optimized 12 prompt chains in agentic supervisor.
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-lg">
-                  <div className="font-code-sm text-[12px] text-on-surface-variant text-right">
-                    <div>Last access</div>
-                    <div className="text-on-surface mt-0.5">4h ago</div>
-                  </div>
-                  <Link
-                    href="/projects"
-                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-surface-variant text-on-surface-variant transition-colors cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">
-                      chevron_right
-                    </span>
-                  </Link>
-                </div>
-              </div>
-
-              {/* Project 3 */}
-              <div className="group flex items-center justify-between p-md bg-surface-container-highest/30 border border-outline-variant/10 hover:border-outline-variant/30 rounded-xl transition-all">
-                <div className="flex items-center gap-md">
-                  <div className="w-2 h-10 bg-secondary rounded-full"></div>
-                  <div>
-                    <div className="font-label-md text-[15px] text-on-surface">
-                      Cognitive Bio-hacking
-                    </div>
-                    <div className="font-body-md text-on-surface-variant text-[13px] mt-0.5">
-                      Bio-neural_Training_Set_Alpha sanitized and normalized.
+                    <div className="flex items-center gap-lg shrink-0">
+                      <div className="font-code-sm text-[12px] text-on-surface-variant text-right">
+                        <div>Last access</div>
+                        <div className="text-on-surface mt-0.5">{project.last_access_label}</div>
+                      </div>
+                      <Link
+                        href={`/projects/${project.id}`}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-surface-variant text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+                        title={`Open ${project.title}`}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">
+                          chevron_right
+                        </span>
+                      </Link>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-lg">
-                  <div className="font-code-sm text-[12px] text-on-surface-variant text-right">
-                    <div>Last access</div>
-                    <div className="text-on-surface mt-0.5">1d ago</div>
-                  </div>
-                  <Link
-                    href="/projects"
-                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-surface-variant text-on-surface-variant transition-colors cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">
-                      chevron_right
-                    </span>
-                  </Link>
-                </div>
-              </div>
+                ))
+              )}
             </div>
           </div>
         </div>

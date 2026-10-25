@@ -2,8 +2,35 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import SidebarUserFooter from "@/components/common/SidebarUserFooter";
+
+interface RecentProjectSidebarItem {
+  id: string;
+  title: string;
+  color: string;
+  last_access_label: string;
+}
+
+function getProjectColorDot(color?: string) {
+  switch (color) {
+    case "tertiary":
+      return "bg-tertiary";
+    case "secondary":
+      return "bg-secondary";
+    case "emerald":
+      return "bg-emerald-400";
+    case "amber":
+      return "bg-amber-400";
+    case "rose":
+      return "bg-rose-400";
+    case "cyan":
+      return "bg-cyan-400";
+    case "primary":
+    default:
+      return "bg-primary";
+  }
+}
 
 interface AppSidebarProps {
   activeTab?: string;
@@ -12,6 +39,29 @@ interface AppSidebarProps {
 export default function AppSidebar({ activeTab }: AppSidebarProps) {
   const pathname = usePathname();
   const [internalTab, setInternalTab] = useState<string>("");
+  const [recentProjects, setRecentProjects] = useState<RecentProjectSidebarItem[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState<boolean>(true);
+
+  const fetchRecentProjects = useCallback(async () => {
+    try {
+      setLoadingRecent(true);
+      const res = await fetch("/api/projects/recent");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.projects)) {
+          setRecentProjects(data.projects);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load recent projects in sidebar:", err);
+    } finally {
+      setLoadingRecent(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRecentProjects();
+  }, [fetchRecentProjects, pathname]);
 
   const isDashboard =
     activeTab === "Dashboard" ||
@@ -112,48 +162,49 @@ export default function AppSidebar({ activeTab }: AppSidebarProps) {
           <span className="font-label-md text-label-md">Datasets</span>
         </button>
 
-        {/* Active Projects Header */}
-        <div className="pt-xl pb-sm px-md opacity-40">
-          <span className="font-label-md text-[10px] uppercase tracking-widest">
-            Active Projects
+        {/* Open Recent Header */}
+        <div className="pt-xl pb-sm px-md opacity-50 flex items-center justify-between">
+          <span className="font-label-md text-[10px] uppercase tracking-widest text-on-surface-variant font-semibold">
+            Open Recent
           </span>
+          <span className="material-symbols-outlined text-[13px] text-outline">schedule</span>
         </div>
 
-        {/* Cognitive Mapper v4 */}
-        <Link
-          href="/projects/cognitive-mapper"
-          className="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface transition-all group"
-        >
-          <div className="w-2 h-2 rounded-full bg-primary group-hover:scale-125 transition-transform"></div>
-          <span className="font-label-md text-label-md truncate">Cognitive Mapper v4</span>
-        </Link>
-
-        {/* Neural Synthesis V2 */}
-        <Link
-          href="/projects"
-          className="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface transition-all group"
-        >
-          <div className="w-2 h-2 rounded-full bg-tertiary group-hover:scale-125 transition-transform"></div>
-          <span className="font-label-md text-label-md truncate">Neural Synthesis V2</span>
-        </Link>
-
-        {/* Quantum Cognition */}
-        <Link
-          href="/projects"
-          className="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface transition-all group"
-        >
-          <div className="w-2 h-2 rounded-full bg-primary-container group-hover:scale-125 transition-transform"></div>
-          <span className="font-label-md text-label-md truncate">Quantum Cognition</span>
-        </Link>
-
-        {/* Cognitive Bio-hacking */}
-        <Link
-          href="/projects"
-          className="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface transition-all group"
-        >
-          <div className="w-2 h-2 rounded-full bg-secondary group-hover:scale-125 transition-transform"></div>
-          <span className="font-label-md text-label-md truncate">Cognitive Bio-hacking</span>
-        </Link>
+        {/* Recent Projects List (Always up to 4 last opened projects) */}
+        {loadingRecent ? (
+          <div className="space-y-2 px-md py-1">
+            <div className="h-4 bg-surface-container-highest/40 rounded animate-pulse w-3/4"></div>
+            <div className="h-4 bg-surface-container-highest/40 rounded animate-pulse w-2/3"></div>
+            <div className="h-4 bg-surface-container-highest/40 rounded animate-pulse w-5/6"></div>
+          </div>
+        ) : recentProjects.length === 0 ? (
+          <div className="px-md py-2 text-[12px] font-code-sm text-outline">
+            No recent projects
+          </div>
+        ) : (
+          recentProjects.map((project) => {
+            const isCurrent = pathname?.startsWith(`/projects/${project.id}`);
+            return (
+              <Link
+                key={project.id}
+                href={`/projects/${project.id}`}
+                className={`flex items-center gap-md px-md py-sm rounded-lg transition-all group ${
+                  isCurrent
+                    ? "bg-surface-variant/40 text-primary font-medium"
+                    : "text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface"
+                }`}
+                title={`${project.title} (${project.last_access_label})`}
+              >
+                <div
+                  className={`w-2 h-2 rounded-full ${getProjectColorDot(
+                    project.color
+                  )} group-hover:scale-125 transition-transform shrink-0`}
+                ></div>
+                <span className="font-label-md text-label-md truncate">{project.title}</span>
+              </Link>
+            );
+          })
+        )}
       </nav>
 
       {/* Profile User Footer */}
