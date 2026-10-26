@@ -1,202 +1,92 @@
-# AI-Powered Research Assistant
+# ResearchPilot (SupervisorX)
 
-## Authentication setup
+ResearchPilot is an AI-powered research assistant for students, researchers, and academics. It helps users discover relevant papers, add papers they already have, analyze and search those papers, ask evidence-grounded questions, compare findings, and export structured summaries as PDF or DOCX.
 
-Authentication runs in the Next.js frontend with Better Auth and the PostgreSQL database from Docker Compose. User, session, OAuth account, and username records are stored in PostgreSQL; Better Auth is a self-hosted library and does not automatically provide a hosted user analytics dashboard.
+## Problem and solution
 
-1. Copy `.env.example` to `.env` if you do not already have a local environment file. Keep `.env` private.
-2. Set `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` to match the PostgreSQL instance. Set `BETTER_AUTH_SECRET` to a random secret with at least 32 characters and `BETTER_AUTH_URL` to the public base URL of the app.
-3. In Google Cloud Console create an OAuth web client and add `http://localhost:3000/api/auth/callback/google` as an authorized redirect URI. Put its client ID and secret in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
-4. In GitHub Developer settings create an OAuth App and set its callback URL to `http://localhost:3000/api/auth/callback/github`. Put its client ID and secret in `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. For production, register the matching callbacks under your deployed domain and set `BETTER_AUTH_URL` to that domain.
-5. Start the services with `docker compose up --build -d`, then create Better Auth's core and username plugin tables with `docker compose exec frontend npm run auth:migrate`. The migration uses the same database selected by `SUPABASE_DATABASE_URL` (or the local Compose database when that value is blank).
+Research work often means searching many publications, downloading and reading PDFs, comparing methods and findings, and checking where each claim came from. ResearchPilot brings those steps into a project-based workspace. Its chatbot retrieves evidence from analyzed papers and can cite the paper, section, and PDF page so users can check the source.
 
-## Supabase PostgreSQL and PDF Storage
+## What the application does
 
-Set `SUPABASE_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_STORAGE_BUCKET` in the private root `.env`. Keep the secret key server-side. This project uses the Sydney session pooler (`SUPABASE_DB_POOLER_HOST=aws-0-ap-southeast-2.pooler.supabase.com`) because the direct database host did not resolve from the current IPv4 environment. The app rewrites the provided direct connection URI to the session pooler; use your Supabase dashboard's pooler host if the project region changes. Leave `SUPABASE_DATABASE_URL` blank to keep local Docker PostgreSQL.
+- **Search and rank research papers:** Search supported sources (currently arXiv and OpenAlex). The search workflow collects candidates in batches, screens titles and abstracts for relevance, applies the selected minimum relevance score, and ranks qualifying papers by relevance (with recency as a secondary order). It returns the highest-ranked papers up to the requested count, subject to source availability and the configured screening budget; it does not claim to exhaust all papers on a topic.
+- **Use papers from search or upload:** Users can find and download papers through the chatbot, or upload their own PDF papers from a project's **Upload & Analysis** area. Uploaded and downloaded papers become part of that project's research library.
+- **Analyze PDF papers:** PyMuPDF extracts PDF text, metadata, page information, and supported structural/visual content. Extracted text is organized into section-aware chunks; supported figures are processed with a vision model. There is no OCR engine in the current pipeline, so scanned/image-only PDFs may not yield usable text.
+- **Ask questions with evidence:** Semantic retrieval finds relevant passages from analyzed papers. Answers can include citations linked to paper titles, sections, page numbers, and supporting excerpts.
+- **Summarize and compare papers:** Generate structured, evidence-grounded summaries and comparisons across eligible analyzed papers.
+- **Export reports:** Generate structured PDF and Word (DOCX) documents with headings, citations, and references.
+- **Manage projects and work:** Keep papers, analysis, and conversations in separate project workspaces. The main dashboard includes cross-project status and colored, titled sticky notes that can be used to record pending work and the last project status.
+- **Configure provider models in code:** Current backend configuration uses OpenRouter-backed models for paper screening, embeddings, and supported visual analysis, and Gemini for the main research chatbot workflows such as Q&A and summaries (with configured fallback behavior where applicable). No local model runtime is required. Model/provider settings and API integrations can be changed by a developer in backend configuration; the application does not currently offer an end-user model-provider switcher. Provider access, free quotas, and pricing depend on each provider and account.
 
-The local database backup created before migration is in the ignored `backups/` directory. Do not remove it or the local Docker volume until the migrated data has been reviewed. Existing Better Auth, project, chat, and paper records were copied to Supabase; the current source and destination row counts were checked. Existing PDFs are stored in the private `research-papers` bucket, with their object paths saved in `project_papers`.
+## Current technology stack
 
-Project creation and PDF access require a Better Auth session. The existing project was assigned to the single existing Better Auth user. New PDF downloads are streamed through a temporary transfer file, uploaded server-side to the private bucket, and exposed through a one-minute signed URL after checking project ownership. The transfer file is removed after streaming; Supabase Storage is the persistent PDF store. FastAPI requires the server-only `INTERNAL_API_KEY` and checks the forwarded Better Auth user against the project's owner in PostgreSQL. Configure these same variables as deployment secrets; never use `NEXT_PUBLIC_` for Supabase's secret key or the internal API key.
-
-The registration form creates email/password accounts with a unique username. Users can sign in using either email or username. Google and GitHub sign-in are enabled when their matching credentials are present. Successful sign-in and registration open `/minimal-dashboard`; the dashboard routes check the Better Auth session on the server.
-
-To see registrations, query the `user` table in the `supervisorx` database (for example, `SELECT count(*) FROM "user";`). Better Auth does not currently sync app users to the Better Auth account website by default; its optional hosted infrastructure dashboard is a separate product/integration.
-
-An AI-powered research assistant that helps students, researchers, and academics discover, analyze, understand, compare, and summarize academic research papers. The system is designed to ground answers in retrieved source documents and provide citations so users can verify claims against the original papers.
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Problem Statement](#problem-statement)
-- [Objectives](#objectives)
-- [Core Features](#core-features)
-- [Proposed Technology Stack](#proposed-technology-stack)
-- [System Workflow](#system-workflow)
-- [Initial Scope](#initial-scope)
-- [Expected Outcome](#expected-outcome)
-
-## Overview
-
-Users enter a research topic or objective through a chatbot interface. The system searches supported academic APIs, such as arXiv, presents relevant papers, downloads selected papers where available, extracts and processes their contents, and stores searchable knowledge in a vector database.
-
-Users can then ask questions about an individual paper or a collection of papers. Responses should be grounded in retrieved source material and, where available, identify the source paper, page, section, and supporting passage. The system can also generate structured research summaries and export them as DOCX or PDF reports.
-
-## Problem Statement
-
-Researchers often spend considerable time searching for publications, downloading papers, reading lengthy documents, comparing methodologies, and identifying important findings. Traditional chatbots may answer without identifying the exact passages supporting their claims, making verification difficult. Analyzing many papers individually is also repetitive and time-consuming.
-
-This project aims to reduce that effort by automating paper discovery and processing, providing evidence-grounded question answering, maintaining a reusable research paper library, and generating structured research summaries.
-
-## Objectives
-
-- Automate research-paper discovery from user-provided topics or objectives.
-- Download and process multiple relevant papers.
-- Extract text, metadata, and relevant figures or tables from PDFs where supported.
-- Apply OCR when scanned documents require it.
-- Store processed paper content for semantic retrieval.
-- Answer questions using retrieved evidence from research papers.
-- Display supporting citations and source passages.
-- Generate PDF summaries for individual papers and collections of papers with proper references.
-- Organize research into separate projects.
-- Reuse previously downloaded and processed papers across projects where appropriate.
-- Support user-configured AI providers so the developer does not need to subsidize model inference.
-
-## Core Features
-
-### 1. Research Paper Discovery
-
-Users describe a research topic or objective in a chatbot interface. The system searches supported academic APIs, such as arXiv, and presents available metadata, abstracts, authors, publication dates, and links.
-
-Users can specify how many papers they want to retrieve, subject to API availability, provider limits, and download permissions.
-
-### 2. Automated Downloading and Processing
-
-After users select papers, the system downloads available PDFs and processes them through a pipeline that may include:
-
-1. PDF text and metadata extraction.
-2. Figure and table extraction where supported.
-3. OCR for scanned documents when necessary.
-4. Text cleaning and chunking.
-5. Embedding generation.
-6. Vector storage and indexing.
-7. Paper-level analysis and processing-status tracking.
-
-Users should be able to monitor progress and retry failed tasks.
-
-### 3. Research Knowledge Base
-
-Processed paper content is stored as searchable chunks with metadata such as paper identifiers, page numbers, sections, and source information. A vector database supports semantic retrieval, finding passages based on the meaning of a question rather than exact keyword matches alone.
-
-A reusable paper library allows the same paper to be associated with multiple research projects without unnecessary duplicate downloads or processing.
-
-### 4. Evidence-Grounded Research Chatbot
-
-Users can ask questions about one paper or an entire collection. The system retrieves relevant passages from processed documents and supplies them to the selected language model as context.
-
-Answers should cite the source paper, page number, relevant section, and supporting passage where available. The system should distinguish information explicitly stated in the papers from AI-generated interpretation and acknowledge when sufficient evidence is unavailable.
-
-### 5. AI-Powered Research Analysis
-
-For individual papers and, where appropriate, comparisons across papers, the system analyzes:
-
-- Research objectives and contributions.
-- Methodologies and model architectures.
-- Datasets and experimental settings.
-- Results and evaluation metrics.
-- Strengths, limitations, and stated future work.
-- Similarities and differences across studies.
-
-Advanced synthesis and research-gap suggestions may be introduced incrementally, with conclusions grounded in retrieved evidence.
-
-### 6. Research Summaries and PDF Generation
-
-Users can request a summary of one paper or a combined summary of multiple papers. A structured report may include:
-
-- Title and research objectives.
-- Main contributions.
-- Methodology.
-- Datasets and experimental results.
-- Key findings.
-- Limitations.
-- References and source citations.
-
-Reports can be exported as PDFs. LaTeX may be used for professionally formatted reports.
-
-### 7. Multi-Project Management
-
-Users can create multiple research projects, each with its own topic, selected papers, conversations, and generated reports.
-
-The paper library is shared across the user's projects. When a paper is needed in another project, the system can reuse the existing copy and processed data when compatible and up to date. User and project data must remain appropriately isolated.
-
-### 8. Flexible AI Model Integration
-
-The system will use a configurable AI-provider architecture. Users can select a preferred model provider and configure their own credentials where required.
-
-Potential providers include:
-
-- Free-tier cloud models through supported providers, such as OpenRouter.
-- Commercial APIs, such as OpenAI, Anthropic, and Google.
-- Locally hosted open-source models through Ollama.
-- Additional compatible providers in future versions.
-
-The developer should not need to subsidize users' model inference. Users are responsible for their provider accounts, API keys, usage limits, and applicable charges.
-
-Where supported, configurable fallback routing may switch between available providers when rate limits or quotas are reached. The system should check provider availability and configuration, preserve research context, and inform users when fallback is unavailable or requires different credentials. Free model availability and quotas depend on each provider and may change over time.
-
-## Proposed Technology Stack
-
-| Component | Proposed technology | Purpose |
+| Layer | Technology currently used | Role |
 |---|---|---|
-| Frontend | Next.js, TypeScript, Tailwind CSS | User interface and research dashboard |
-| Backend | FastAPI, Python | APIs, processing, orchestration, and business logic |
-| Relational database | PostgreSQL | Projects, paper metadata, conversations, and processing records |
-| Vector database | Qdrant | Semantic retrieval of paper content |
-| Local AI runtime | Ollama | Run locally available language and vision models |
-| Cloud AI integration | OpenAI-compatible APIs and provider-specific integrations | Access configurable hosted models |
-| PDF processing | PyMuPDF | Extract text, metadata, and images |
-| OCR | Appropriate OCR engine when required | Extract text from scanned documents |
-| Embeddings | Configurable embedding models | Convert document chunks and queries into vectors |
-| Background processing | ARQ and Redis, if required | Process multiple papers without blocking the interface |
-| Report generation | LaTeX and PDF compilation tools | Generate formatted research reports |
-| Version control | Git and GitHub | Manage source code and development history |
+| Web frontend | Next.js, React, TypeScript, Tailwind CSS | Dashboard, project workspaces, paper library, chatbot, uploads, and reports |
+| Backend API | Python, FastAPI | Paper search, downloads, analysis orchestration, retrieval, chat, and document export |
+| Authentication | Better Auth | Email/password and optional Google/GitHub sign-in |
+| Relational database | PostgreSQL, configured to use Supabase in the current hosted-data setup | Users, projects, papers, conversations, and application records |
+| Vector search | pgvector extension in PostgreSQL (Supabase PostgreSQL) | Stores and searches paper-chunk and visual-item embeddings |
+| PDF storage | Supabase Storage | Stores uploaded/downloaded paper PDFs privately |
+| Academic sources | arXiv and OpenAlex | Candidate paper discovery and metadata |
+| Main chatbot LLM | Gemini API, selected through backend configuration | Research Q&A, summaries, comparisons, and related synthesis workflows |
+| Other hosted model APIs | OpenRouter | Paper relevance screening, embeddings, and supported vision-model calls |
+| PDF extraction | PyMuPDF | PDF text, metadata, pages, sections/chunks, and visual extraction |
+| Report generation | ReportLab and python-docx | PDF and DOCX output |
+| Local development | Docker Compose, with PostgreSQL as a local fallback | Runs the frontend, FastAPI backend, and optional local database |
 
-> This is the proposed stack. The actual implementation may differ; verify the repository and configuration before assuming a component is already implemented.
+The implementation does **not** currently use Qdrant, Ollama, Redis/ARQ, an OCR model, or LaTeX report compilation. Supabase PostgreSQL can be replaced by the local Compose PostgreSQL database for development when the Supabase database URL is unset; Supabase Storage is used for persistent research-paper PDFs in the configured setup.
 
-## System Workflow
+## How the research workflow works
 
-1. The user creates a research project and enters a research topic.
-2. The system searches supported academic APIs and presents relevant papers.
-3. The user selects papers to download and analyze.
-4. The system downloads available PDFs and checks for existing copies.
-5. The PDF pipeline extracts text, metadata, and relevant visual content.
-6. Extracted content is divided into chunks and converted into embeddings.
-7. Paper metadata is stored in PostgreSQL and searchable vectors in Qdrant.
-8. The AI analysis pipeline processes papers and stores useful analysis results.
-9. The user asks questions through the research chatbot.
-10. The system retrieves relevant evidence and generates an answer with source citations.
-11. The user requests an individual or combined research summary and exports it as a PDF.
+1. Create or open a research project.
+2. Search for papers using the chatbot, or upload a PDF you already have in that project's Upload & Analysis area.
+3. Select papers to download or analyze.
+4. The backend extracts PDF content with PyMuPDF, creates section/page-aware chunks, processes supported visuals, generates embeddings through the configured provider, and stores searchable evidence in PostgreSQL/pgvector.
+5. Ask questions, request summaries, or compare papers. The backend retrieves relevant evidence and sends it to the configured LLM workflow.
+6. Review inline citations and source references, then export a structured PDF or DOCX when needed.
+7. Use dashboard sticky notes to record a project's status or next steps.
 
-## Initial Scope
+## Local setup
 
-The initial version focuses on the workflow from topic-based paper discovery to evidence-grounded question answering and PDF report generation.
+### Prerequisites
 
-Planned initial capabilities:
+- Docker Desktop with Docker Compose
+- API credentials for the configured Gemini and OpenRouter workflows
+- Supabase credentials if using Supabase PostgreSQL and Storage; otherwise use the local PostgreSQL service for development
 
-- Research project management.
-- Academic API integration.
-- Paper selection and downloading.
-- PDF extraction and processing.
-- Embedding generation and vector storage.
-- Multi-paper analysis.
-- Citation-supported research chat.
-- Summary and PDF generation.
-- Reusable paper library.
-- User-configured local and cloud AI providers.
+### Configure and start
 
-The initial implementation will prioritize supported, text-based research PDFs. Advanced OCR, detailed figure interpretation, large-scale parallel processing, sophisticated autonomous agents, and advanced research-gap detection can be added incrementally.
+1. Copy .env.example to .env and fill in the required secrets. Do not commit .env. Set a strong BETTER_AUTH_SECRET, database credentials, INTERNAL_API_KEY, and the provider keys needed for the features you plan to run. For Supabase, configure SUPABASE_DATABASE_URL, SUPABASE_URL, SUPABASE_SECRET_KEY, and SUPABASE_STORAGE_BUCKET.
+2. Set BETTER_AUTH_URL to http://localhost:3000 for local development. Configure Google or GitHub OAuth credentials only if you want those sign-in options.
+3. Build and start the local services:
 
-## Expected Outcome
+   docker compose up --build -d
 
-The expected outcome is a functional AI-powered research assistant that reduces the manual effort required to discover, read, analyze, compare, and summarize academic literature.
+4. Create Better Auth's database tables:
 
-The system combines academic APIs, PDF processing, vector search, configurable language models, and evidence-grounded responses into an integrated research workflow. Its key design priorities are source traceability, reusable research knowledge, flexible AI-provider selection, and user-controlled model costs.
+   docker compose exec frontend npm run auth:migrate
+
+5. Open http://localhost:3000. The FastAPI service is available on port 8000 for local development.
+
+For production, configure production-grade runtime commands, secrets, database/storage connectivity, OAuth callback URLs, and trusted origins for the chosen hosting provider. The current Compose files are for local development and are not, by themselves, proof of a production deployment.
+
+## Security and data notes
+
+- Keep .env, provider API keys, Supabase service credentials, and INTERNAL_API_KEY private and server-side.
+- Paper access is scoped to authenticated project ownership. Supabase paper PDFs are stored in a private bucket and served through controlled access.
+- Do not place Supabase secret keys or internal service keys in NEXT_PUBLIC_ variables.
+- Search results depend on academic source coverage, provider limits, relevance thresholds, and screening budgets.
+- OCR is not implemented. Text extraction quality depends on the PDF containing extractable text.
+- Provider quotas and pricing may change; verify current terms with the configured provider.
+
+## Repository layout
+
+- frontend/ — Next.js application and authenticated frontend API routes
+- backend/ — FastAPI application, paper discovery, analysis, retrieval, AI services, and document generation
+- backend/migrations.py — PostgreSQL/pgvector schema setup
+- compose.yaml — Local development services
+- .env.example — Environment-variable template (contains placeholders, not secrets)
+
+## Project documentation
+
+See [project_summary.md](project_summary.md) for the system purpose, implementation workflow, current stack, scope, and known limitations.

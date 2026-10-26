@@ -33,7 +33,7 @@ export async function GET(
     const res = await pool.query(
       `SELECT id, session_id, sender, text, time_label, tag,
               is_papers_response, papers, intro_text, total_verified, queued_info,
-              citations, intent, created_at
+              citations, intent, document, created_at
        FROM chat_messages
        WHERE project_id = $1 AND session_id = $2
        ORDER BY created_at ASC`,
@@ -53,6 +53,7 @@ export async function GET(
       queuedInfo: row.queued_info || undefined,
       citations: row.citations || [],
       intent: row.intent || undefined,
+      document: row.document || undefined,
     }));
 
     return NextResponse.json({ success: true, messages });
@@ -92,6 +93,7 @@ export async function POST(
       queuedInfo,
       citations = [],
       intent,
+      document = null,
     } = body;
 
     if (!sessionId || !sender) {
@@ -105,8 +107,8 @@ export async function POST(
       `INSERT INTO chat_messages (
         id, session_id, project_id, sender, text, time_label, tag,
         is_papers_response, papers, intro_text, total_verified, queued_info,
-        citations, intent
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        citations, intent, document
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         id,
         sessionId,
@@ -122,6 +124,7 @@ export async function POST(
         queuedInfo ? JSON.stringify(queuedInfo) : null,
         JSON.stringify(citations || []),
         intent || null,
+        document ? JSON.stringify(document) : null,
       ]
     );
 

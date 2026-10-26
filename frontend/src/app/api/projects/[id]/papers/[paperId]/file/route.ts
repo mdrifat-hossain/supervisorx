@@ -14,17 +14,24 @@ export async function GET(
     if (!(await userOwnsProject(userId, id))) {
       return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
     }
+    const { searchParams } = new URL(req.url);
+    const format = searchParams.get("format")?.toLowerCase();
+
     const result = await pool.query(
-      "SELECT storage_bucket, storage_path FROM project_papers WHERE project_id = $1 AND paper_id = $2",
+      "SELECT storage_bucket, storage_path, primary_category FROM project_papers WHERE project_id = $1 AND (paper_id = $2 OR id = $2)",
       [id, paperId]
     );
     if (!result.rows[0]?.storage_bucket || !result.rows[0]?.storage_path) {
-      return NextResponse.json({ success: false, error: "PDF not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "File not found" }, { status: 404 });
     }
-    const url = await createPrivatePdfUrl(result.rows[0].storage_bucket, result.rows[0].storage_path);
+    let targetPath = result.rows[0].storage_path;
+    if (format === "docx" && targetPath.endsWith(".pdf")) {
+      targetPath = targetPath.replace(/\.pdf$/i, ".docx");
+    }
+    const url = await createPrivatePdfUrl(result.rows[0].storage_bucket, targetPath);
     return NextResponse.redirect(url, { status: 307 });
   } catch (error) {
-    console.error("GET project PDF error:", error);
-    return NextResponse.json({ success: false, error: "Could not retrieve PDF" }, { status: 500 });
+    console.error("GET project file error:", error);
+    return NextResponse.json({ success: false, error: "Could not retrieve file" }, { status: 500 });
   }
 }

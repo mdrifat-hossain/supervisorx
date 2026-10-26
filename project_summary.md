@@ -1,106 +1,87 @@
-# Project Summary: AI-Powered Research Assistant
+# ResearchPilot (SupervisorX) — Project Summary
 
 ## Purpose
 
-Build an AI-powered research assistant for students, researchers, and academics. It should help users discover academic papers, process and analyze them, ask evidence-grounded questions, compare findings across papers, and generate PDF summaries.
+ResearchPilot is a project-based AI research assistant for students, researchers, and academics. It supports paper discovery, PDF uploads, paper analysis, evidence-grounded chat, cross-paper comparison, structured summaries, and PDF/DOCX report generation.
 
-## Problem Being Solved
+## Problem
 
-Research workflows are time-consuming: users must find papers, download and read them, compare methods and results, and identify useful findings. Answers from general-purpose chatbots may not show exactly where their claims came from. This project prioritizes traceability to source documents.
+Finding relevant literature and extracting trustworthy findings from many papers takes time. General chatbot answers can also be difficult to verify when they do not identify the source passage. ResearchPilot aims to streamline this work while preserving traceability to the underlying papers.
 
-## Primary User Flow
+## Solution and user workflow
 
-1. Create a research project and enter a topic or research objective.
-2. Search academic sources (for example, arXiv) and review paper metadata.
-3. Select and download available papers.
-4. Extract PDF text and metadata; extract figures/tables where supported and use OCR when needed.
-5. Clean and chunk the content, generate embeddings, and index it.
-6. Save paper/project metadata and searchable content.
-7. Analyze papers and store useful analysis results.
-8. Ask questions about one paper or a paper collection.
-9. Retrieve relevant passages and generate answers with source citations.
-10. Generate an individual or cross-paper report and export it as PDF.
+1. A user creates or opens a research project.
+2. The user asks the chatbot to find papers, or uploads a locally available PDF from that project's Upload & Analysis area.
+3. For discovery, the system queries supported academic sources (currently arXiv and OpenAlex), gathers candidates in batches, and screens candidate titles and abstracts for relevance.
+4. The system applies a minimum relevance threshold and ranks qualifying papers by relevance score, with recency as a secondary order. It returns the highest-ranked papers up to the requested count, within source availability and the configured screening budget. This is iterative ranked selection, not a guarantee that every paper ever published on a topic has been searched.
+5. Selected papers are downloaded or uploaded and stored in the project library.
+6. PyMuPDF extracts text and metadata from supported PDFs. The backend forms page- and section-aware chunks, extracts supported visual content, and sends visual analysis to a configured hosted vision model where applicable. The system does not currently include OCR, so scanned/image-only PDFs may not produce searchable text.
+7. The backend generates embeddings through a hosted provider and stores paper chunks, source metadata, and vectors in PostgreSQL with pgvector.
+8. The chatbot retrieves relevant evidence for Q&A, structured summaries, and comparisons. Responses can include paper title, section, PDF page, and supporting passages.
+9. Users can export structured reports as PDF or DOCX and use main-dashboard sticky notes to remember project status and pending work.
 
-## Core Capabilities
+## Main capabilities
 
-- **Paper discovery:** Search supported academic APIs and show available metadata, abstracts, authors, dates, and links.
-- **PDF processing:** Extract and clean text and metadata, with optional figure/table extraction and OCR.
-- **Semantic retrieval:** Find relevant passages by meaning, using embeddings and a vector database.
-- **Grounded research chat:** Answer using retrieved source passages; cite paper, page, section, and supporting text where available.
-- **Paper analysis:** Extract objectives, contributions, methods, model architectures, datasets, experimental settings, metrics, results, limitations, and future work.
-- **Cross-paper synthesis:** Compare similarities and differences, with conclusions grounded in evidence.
-- **PDF reports:** Produce structured summaries with citations.
-- **Project management:** Keep topics, selected papers, conversations, and reports organized per project.
-- **Reusable paper library:** Reuse downloaded and processed papers across projects where compatible and current.
-- **Configurable AI providers:** Support local models through Ollama and configured cloud/provider APIs. Users provide their own credentials and pay applicable usage costs.
-- **Fallback routing:** Where supported, switch to a configured alternative provider when limits are reached, while preserving context and communicating when fallback cannot be used.
+- **Ranked paper discovery:** arXiv and OpenAlex search; iterative candidate collection; relevance screening; score threshold; top-ranked result selection.
+- **Research-paper uploads:** Add an existing PDF through a project's Upload & Analysis workspace.
+- **PDF analysis:** Extract text, metadata, page references, sections/chunks, and supported visual items with PyMuPDF and configured AI services. No OCR.
+- **Evidence-grounded Q&A:** Semantic retrieval over analyzed papers with citations and source locations.
+- **Paper summaries and comparisons:** Structured synthesis across one or more analyzed papers, grounded in retrieved content.
+- **Document export:** Structured PDF and DOCX generation, including headings and citations.
+- **Project organization:** Separate project workspaces for conversations, papers, and analysis.
+- **Sticky notes:** Main-dashboard notes with title, color, and status/reminder content to help users resume work.
+- **Authentication and protected data:** Better Auth, project ownership checks, PostgreSQL records, and private Supabase PDF storage.
 
-## Proposed Architecture and Stack
+## Current architecture and technology stack
 
-| Layer | Proposed technology |
+| Component | Current implementation |
 |---|---|
-| Frontend | Next.js, TypeScript, Tailwind CSS |
-| Backend/API | FastAPI, Python |
-| Relational data | PostgreSQL |
-| Vector search | Qdrant |
-| Local model runtime | Ollama |
-| Hosted model integration | OpenAI-compatible APIs and provider-specific integrations |
-| PDF extraction | PyMuPDF |
-| OCR | An appropriate OCR engine when required |
-| Embeddings | Configurable embedding models |
-| Background jobs | ARQ + Redis, if needed |
-| PDF report generation | LaTeX and PDF compilation tools |
-| Source control | Git and GitHub |
+| Frontend | Next.js, React, TypeScript, Tailwind CSS |
+| Backend/API | Python, FastAPI |
+| Authentication | Better Auth; email/password and optional Google/GitHub OAuth |
+| Relational database | PostgreSQL; Supabase PostgreSQL in the configured persistent setup |
+| Vector database/search | pgvector extension in PostgreSQL (Supabase PostgreSQL) |
+| PDF file storage | Private Supabase Storage bucket |
+| Paper sources | arXiv and OpenAlex |
+| Main research chatbot LLM | Gemini API via backend configuration for research Q&A and summaries, plus related synthesis workflows |
+| Other hosted AI APIs | OpenRouter-backed screening, embedding, and supported visual-analysis calls |
+| PDF processing | PyMuPDF; no OCR engine |
+| PDF report generation | ReportLab |
+| DOCX report generation | python-docx |
+| Local development | Docker Compose with frontend, FastAPI backend, and local PostgreSQL fallback |
 
-**Important:** This is the proposed architecture from the project proposal, not proof that every component is already implemented. Inspect the codebase, dependency files, environment configuration, and tests before making implementation claims or changes.
+No local model runtime is required by the current implementation. Model/provider settings can be changed by a developer in backend configuration when the alternate provider and API are compatible; there is no end-user model-provider selection UI. Provider quotas and pricing depend on provider, model, account, and current terms. Qdrant, Ollama, ARQ/Redis, OCR, and LaTeX compilation are not part of the current stack.
 
-## Data and Evidence Principles
+## Evidence and citation approach
 
-- Keep paper metadata and project records in the relational database.
-- Store searchable chunks and embeddings in the vector database.
-- Preserve useful source metadata such as paper ID, page, section, and source URL.
-- Ground answers and synthesis in retrieved passages.
-- Cite sources so users can verify claims.
-- Clearly distinguish statements in the papers from model interpretation.
-- Acknowledge when the retrieved evidence is insufficient.
-- Isolate user and project data appropriately.
-- Reuse existing paper files and processed data only when they are compatible and up to date.
+The analysis pipeline records paper identifiers, PDF page ranges, section titles, and extracted text for chunks. Embeddings support semantic retrieval from those records. Chat and synthesis workflows use retrieved evidence and return citation metadata so users can trace supported claims to their source paper and location. Citations are only as reliable as the extraction, retrieval, source metadata, and generated answer; scanned PDFs without a text layer are a known limitation because OCR is not implemented.
 
-## Initial Scope and Priorities
+## Data handling
 
-Prioritize an end-to-end workflow for supported, primarily text-based research PDFs:
+- PostgreSQL stores application records such as users, projects, papers, chats, and analysis data.
+- The pgvector extension stores searchable embeddings alongside research evidence.
+- Supabase Storage stores private research-paper PDFs in the configured setup.
+- A local PostgreSQL service is available through Docker Compose for local development when Supabase database configuration is omitted.
+- Backend requests forwarded by the frontend use a server-only internal key and verify the authenticated user's project ownership.
 
-1. Project management and academic paper discovery.
-2. Paper selection, downloading, and duplicate detection.
-3. PDF extraction, chunking, embeddings, and indexing.
-4. Evidence-grounded question answering with citations.
-5. Single-paper and multi-paper analysis.
-6. Structured summary generation and PDF export.
-7. Reusable paper library and configurable model providers.
+## Scope and limitations
 
-Advanced OCR, detailed figure interpretation, large-scale parallel processing, sophisticated autonomous agents, and advanced research-gap detection are incremental features rather than required assumptions for the first version.
+- Search coverage is limited to supported APIs and the candidates they return; relevance screening has a configurable candidate budget and score threshold.
+- Paper downloads depend on source availability and access.
+- PDF text extraction works best for text-based PDFs. OCR for scanned/image-only pages is not included.
+- AI output and citation quality require human review against original papers.
+- Provider availability, model names, quotas, and prices can change.
+- A developer can modify backend configuration to use another compatible hosted model provider; users cannot switch providers from the interface.
+- The current repository documents and supports local Docker Compose setup; a production deployment must be configured separately.
 
-## Constraints and Cost Model
+## Repository map
 
-- Academic API coverage, paper availability, permissions, and rate limits may restrict discovery and downloads.
-- Free-tier model availability and quotas can change.
-- Users are expected to supply their own API credentials and cover applicable hosted-model costs.
-- Provider fallback works only when the alternative is configured and available.
-- Background processing through ARQ and Redis is proposed only if required by the implementation.
+- frontend/ — Next.js application, dashboards, project views, chatbot, and authenticated routes
+- backend/ — FastAPI endpoints, academic search, PDF analysis, retrieval, AI integrations, and report generation
+- backend/migrations.py — PostgreSQL and pgvector schema
+- compose.yaml — Local development services
+- README.md — Setup, features, current stack, and operational notes
 
-## Guidance for an AI Coding Agent
+## Success criteria
 
-Before changing code:
-
-1. Inspect the repository structure, README files, dependency manifests, environment examples, migrations, and tests.
-2. Determine which features are implemented, partially implemented, or only proposed.
-3. Treat this summary as product intent, not as evidence of existing implementation.
-4. Preserve source traceability throughout PDF extraction, chunking, retrieval, answers, and generated reports.
-5. Avoid claiming a citation, page number, or finding unless it is supported by stored source information.
-6. Check for duplicate paper downloads and stale processed data before reprocessing.
-7. Keep secrets out of source control; use environment variables or secure configuration for API credentials.
-8. Make changes incrementally and run relevant tests.
-
-## Success Criteria
-
-The system should let a user go from a research topic to a searchable paper collection, ask questions whose answers cite verifiable source passages, compare papers with evidence, and export structured summaries to PDF. It should also support multiple projects, reuse compatible paper data, and allow users to configure their own model providers and costs.
+A user should be able to find and rank relevant research papers, add papers they already possess, analyze text-based PDFs, ask questions with traceable evidence, compare and summarize analyzed papers, and export structured reports. Users should also be able to organize research into projects and record reminders on the main dashboard.

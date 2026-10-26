@@ -47,8 +47,9 @@ export default function SidebarUserFooter() {
     } catch (err) {
       console.error("Sign out error:", err);
     } finally {
-      router.push("/login");
-      router.refresh();
+      if (typeof window !== "undefined") {
+        window.location.replace("/login");
+      }
     }
   };
 

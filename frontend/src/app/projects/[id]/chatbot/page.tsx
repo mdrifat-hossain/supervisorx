@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import ProjectResearchChatbot from "@/components/chat/ProjectResearchChatbot";
+import ProjectLoadingSkeleton from "@/components/common/ProjectLoadingSkeleton";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -17,9 +18,10 @@ export default async function DynamicProjectChatbotPage({
   params: Promise<{ id: string }>;
 }) {
   const resolvedParams = await params;
+  const projectId = resolvedParams.id || "cognitive-mapper";
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background" />}>
-      <ProjectResearchChatbot projectId={resolvedParams.id || "cognitive-mapper"} />
+    <Suspense fallback={<ProjectLoadingSkeleton projectId={projectId} />}>
+      <ProjectResearchChatbot projectId={projectId} />
     </Suspense>
   );
 }

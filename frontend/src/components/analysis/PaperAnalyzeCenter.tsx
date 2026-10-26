@@ -148,32 +148,34 @@ export default function PaperAnalyzeCenter({
   // Fetch Papers from PostgreSQL via API
   const fetchPapers = useCallback(async () => {
     try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/papers`);
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/papers?exclude_reports=true`);
       if (!res.ok) throw new Error("Failed to load papers");
       const data = await res.json();
       if (data.success && Array.isArray(data.papers)) {
-        const mapped: Paper[] = data.papers.map((p: any) => {
-          const fileSizeMB = (Number(p.file_size) || 0) / (1024 * 1024);
-          return {
-            id: p.paper_id || p.id,
-            paper_id: p.paper_id,
-            title: p.title || "Untitled Paper",
-            authors: p.authors || "Unknown Authors",
-            venue: p.venue || p.primary_category || "Academic Preprint",
-            tags: Array.isArray(p.tags) && p.tags.length > 0 ? p.tags : ["Deep Learning", "Preprint"],
-            size: Number(fileSizeMB.toFixed(2)),
-            sizeLabel: p.file_size_label || `${fileSizeMB.toFixed(1)} MB • PDF`,
-            timeAgo: getRelativeTime(p.downloaded_at),
-            date: p.downloaded_at ? p.downloaded_at.slice(0, 10) : "",
-            citations: Math.floor(Math.random() * 500) + 12,
-            status: p.status === "analyzed" ? "analyzed" : "pending",
-            analyzed_at: p.analyzed_at,
-            insights: p.insights,
-            chunks_count: p.chunks_count || 0,
-            figures_count: p.figures_count || 0,
-            vectors_count: p.vectors_count || 0,
-          };
-        });
+        const mapped: Paper[] = data.papers
+          .filter((p: any) => p.primary_category !== "Generated Report" && p.status !== "report")
+          .map((p: any) => {
+            const fileSizeMB = (Number(p.file_size) || 0) / (1024 * 1024);
+            return {
+              id: p.paper_id || p.id,
+              paper_id: p.paper_id,
+              title: p.title || "Untitled Paper",
+              authors: p.authors || "Unknown Authors",
+              venue: p.venue || p.primary_category || "Academic Preprint",
+              tags: Array.isArray(p.tags) && p.tags.length > 0 ? p.tags : ["Deep Learning", "Preprint"],
+              size: Number(fileSizeMB.toFixed(2)),
+              sizeLabel: p.file_size_label || `${fileSizeMB.toFixed(1)} MB • PDF`,
+              timeAgo: getRelativeTime(p.downloaded_at),
+              date: p.downloaded_at ? p.downloaded_at.slice(0, 10) : "",
+              citations: Math.floor(Math.random() * 500) + 12,
+              status: p.status === "analyzed" ? "analyzed" : "pending",
+              analyzed_at: p.analyzed_at,
+              insights: p.insights,
+              chunks_count: p.chunks_count || 0,
+              figures_count: p.figures_count || 0,
+              vectors_count: p.vectors_count || 0,
+            };
+          });
         setPapers(mapped);
       }
     } catch (err) {

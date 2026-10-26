@@ -341,6 +341,30 @@ export default function ProjectResearchChatbot({
   // Input state
   const [inputMessage, setInputMessage] = useState("");
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea smoothly as content wraps or user inputs newlines
+  const adjustTextareaHeight = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const minHeight = 24; // 1-line standard height
+    const maxHeight = 200; // expands upwards up to ~8 lines
+    const nextHeight = Math.min(Math.max(el.scrollHeight, minHeight), maxHeight);
+    el.style.height = `${nextHeight}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+  };
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputMessage]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
 
   const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
   const allSessionScreenedIds = useRef<Set<string>>(new Set());
@@ -890,6 +914,10 @@ export default function ProjectResearchChatbot({
 
     setMessages((prev) => [...prev, userMsg]);
     setInputMessage("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "24px";
+      textareaRef.current.style.overflowY = "hidden";
+    }
 
     // Persist user message to PostgreSQL
     fetch(`/api/projects/${projectId}/chat/messages`, {
@@ -1201,6 +1229,7 @@ export default function ProjectResearchChatbot({
             text: aiMsg.text,
             citations: aiMsg.citations,
             intent: "generate_document",
+            document: aiMsg.document,
           }),
         }).catch((e) => console.error("Error saving document response to DB:", e));
       } else {
@@ -2426,16 +2455,21 @@ export default function ProjectResearchChatbot({
                   onSubmit={handleSendMessage}
                   className="relative bg-surface-container rounded-xl border border-outline-variant/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all p-2 flex flex-col gap-2"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-outline pl-1 text-[20px] shrink-0">
+                  <div className="flex items-start gap-2">
+                    <span className="material-symbols-outlined text-outline pl-1 pt-0.5 text-[20px] shrink-0">
                       search
                     </span>
-                    <input
+                    <textarea
+                      ref={textareaRef}
+                      rows={1}
                       value={inputMessage}
-                      onChange={(e) => setInputMessage(e.target.value)}
-                      className="w-full bg-transparent border-0 text-on-surface placeholder:text-outline text-body-md focus:ring-0 p-0 focus:outline-none"
-                      placeholder="Ask for papers, request downloads (e.g. 'Download papers 2 and 6'), or explore concepts..."
-                      type="text"
+                      onChange={(e) => {
+                        setInputMessage(e.target.value);
+                        adjustTextareaHeight();
+                      }}
+                      onKeyDown={handleKeyDown}
+                      className="w-full bg-transparent border-0 text-on-surface placeholder:text-outline text-body-md focus:ring-0 p-0 focus:outline-none resize-none custom-scrollbar min-h-[24px] max-h-[200px] leading-relaxed"
+                      placeholder="Ask for papers, request downloads (e.g. 'Download papers 2 and 6'), or explore concepts... (Shift + Enter for new line)"
                     />
                   </div>
 

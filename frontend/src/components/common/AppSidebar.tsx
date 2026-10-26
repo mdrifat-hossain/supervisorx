@@ -73,6 +73,11 @@ export default function AppSidebar({ activeTab }: AppSidebarProps) {
     activeTab === "Projects" ||
     pathname === "/projects";
 
+  const isDocuments =
+    activeTab === "All Documents" ||
+    activeTab === "Documents" ||
+    pathname === "/documents";
+
   return (
     <aside className="w-[260px] flex-shrink-0 flex flex-col bg-surface-container-low border-r border-outline-variant/20 h-screen sticky top-0 z-40 select-none">
       {/* Brand Header */}
@@ -134,19 +139,18 @@ export default function AppSidebar({ activeTab }: AppSidebarProps) {
           <span className="font-label-md text-label-md">Research Graph</span>
         </button>
 
-        {/* Paper Library */}
-        <button
-          type="button"
-          onClick={() => setInternalTab("Paper Library")}
+        {/* All Documents */}
+        <Link
+          href="/documents"
           className={`w-full flex items-center gap-md px-md py-sm rounded-lg group transition-all duration-200 text-left cursor-pointer ${
-            internalTab === "Paper Library" && !isDashboard && !isProjects
+            isDocuments
               ? "active-nav font-medium"
               : "text-on-surface-variant hover:bg-surface-variant/30 hover:text-on-surface"
           }`}
         >
           <span className="material-symbols-outlined text-[20px]">description</span>
-          <span className="font-label-md text-label-md">Paper Library</span>
-        </button>
+          <span className="font-label-md text-label-md">All Documents</span>
+        </Link>
 
         {/* Datasets */}
         <button

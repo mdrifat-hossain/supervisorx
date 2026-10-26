@@ -1,16 +1,20 @@
 import os
 import re
 import uuid
+import json
 import logging
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
+import requests
+from config import settings
 from services.document_models import parse_markdown_to_document, StructuredDocument
 from services.docx_generator import generate_docx_document
 from services.pdf_generator import generate_pdf_document
 
 logger = logging.getLogger("document_service")
 
-# Storage directory for generated reports
+# Local cache directory for generated reports
 BASE_DOCS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "generated_documents")
 os.makedirs(BASE_DOCS_DIR, exist_ok=True)
 
@@ -36,36 +40,209 @@ def _requested_document_format(query: str, routed_format: str) -> str:
     return normalized if normalized in {"pdf", "docx", "both"} else "pdf"
 
 
+def upload_file_to_supabase(bucket: str, storage_path: str, data: bytes, content_type: str) -> bool:
+    """Uploads document bytes to private Supabase Storage."""
+    supabase_url = settings.SUPABASE_URL.rstrip("/")
+    secret_key = settings.SUPABASE_SECRET_KEY
+    if not supabase_url or not secret_key:
+        logger.warning("Supabase storage credentials missing; skipping cloud upload.")
+        return False
+    try:
+        encoded_path = "/".join(requests.utils.quote(p) for p in storage_path.split("/"))
+        url = f"{supabase_url}/storage/v1/object/{bucket}/{encoded_path}"
+        headers = {
+            "apikey": secret_key,
+            "Authorization": f"Bearer {secret_key}",
+            "Content-Type": content_type,
+            "x-upsert": "true",
+        }
+        resp = requests.post(url, headers=headers, data=data, timeout=60)
+        if resp.status_code in (200, 201):
+            logger.info(f"Successfully uploaded {storage_path} to Supabase bucket '{bucket}'")
+            return True
+        logger.error(f"Supabase upload failed ({resp.status_code}): {resp.text}")
+        return False
+    except Exception as e:
+        logger.error(f"Exception uploading to Supabase Storage: {e}")
+        return False
+
+
+def download_file_from_supabase(bucket: str, storage_path: str) -> Optional[bytes]:
+    """Downloads a document from Supabase Storage."""
+    supabase_url = settings.SUPABASE_URL.rstrip("/")
+    secret_key = settings.SUPABASE_SECRET_KEY
+    if not supabase_url or not secret_key:
+        return None
+    try:
+        encoded_path = "/".join(requests.utils.quote(p) for p in storage_path.split("/"))
+        url = f"{supabase_url}/storage/v1/object/authenticated/{bucket}/{encoded_path}"
+        headers = {"apikey": secret_key, "Authorization": f"Bearer {secret_key}"}
+        resp = requests.get(url, headers=headers, timeout=60)
+        if resp.status_code == 200:
+            return resp.content
+        logger.warning(f"Supabase download returned status {resp.status_code} for {storage_path}")
+        return None
+    except Exception as e:
+        logger.error(f"Exception downloading from Supabase Storage: {e}")
+        return None
+
+
+def register_report_in_project_papers(
+    project_id: str,
+    doc_id: str,
+    title: str,
+    scope_desc: str,
+    pdf_bytes: Optional[bytes] = None,
+    docx_bytes: Optional[bytes] = None,
+    pdf_storage_path: Optional[str] = None,
+    docx_storage_path: Optional[str] = None,
+):
+    """
+    Registers the generated report into project_papers so it is cataloged in the
+    Project Paper Library and can be opened, reviewed, or deleted.
+    """
+    try:
+        from services.paper_analysis_pipeline import get_db_connection
+        size_bytes = len(pdf_bytes) if pdf_bytes else len(docx_bytes or b"")
+        size_label = (
+            f"{(size_bytes / 1024):.1f} KB • Report"
+            if size_bytes < 1024 * 1024
+            else f"{(size_bytes / (1024 * 1024)):.2f} MB • Report"
+        )
+        clean_name = _sanitize_filename(title)
+        file_name = f"{clean_name}.pdf" if pdf_bytes else f"{clean_name}.docx"
+        storage_path = pdf_storage_path or docx_storage_path or f"{project_id}/reports/{doc_id}/{file_name}"
+        paper_pk = f"{project_id}_report_{doc_id}"
+        paper_id = f"report-{doc_id}"
+        pdf_url = f"/api/projects/{project_id}/documents/{doc_id}/download?format=pdf" if pdf_bytes else f"/api/projects/{project_id}/documents/{doc_id}/download?format=docx"
+        entry_url = pdf_url
+
+        formats_list = []
+        if pdf_bytes:
+            formats_list.append("PDF")
+        if docx_bytes:
+            formats_list.append("DOCX")
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO project_papers (
+                        id, project_id, paper_id, title, authors, venue, year, published,
+                        summary, pdf_url, entry_url, primary_category, file_name, file_size,
+                        file_size_label, tags, storage_bucket, storage_path, analysis_status, insights
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s::jsonb, %s, %s, %s, %s::jsonb
+                    )
+                    ON CONFLICT (project_id, paper_id) DO UPDATE SET
+                        title = EXCLUDED.title,
+                        file_size = EXCLUDED.file_size,
+                        file_size_label = EXCLUDED.file_size_label,
+                        storage_path = EXCLUDED.storage_path;
+                    """,
+                    (
+                        paper_pk,
+                        project_id,
+                        paper_id,
+                        title,
+                        "SupervisorX AI Engine",
+                        "SupervisorX Research Report",
+                        datetime.now().year,
+                        datetime.now().strftime("%Y-%m-%d"),
+                        scope_desc or "Synthesized research report generated via SupervisorX AI.",
+                        pdf_url,
+                        entry_url,
+                        "Generated Report",
+                        file_name,
+                        size_bytes,
+                        size_label,
+                        json.dumps(["Generated Report"] + formats_list),
+                        settings.SUPABASE_STORAGE_BUCKET,
+                        storage_path,
+                        "report",
+                        json.dumps({
+                            "document_id": doc_id,
+                            "formats": formats_list,
+                            "is_generated_report": True,
+                        }),
+                    ),
+                )
+                conn.commit()
+        logger.info(f"Registered generated report '{paper_id}' in project_papers for project '{project_id}'")
+    except Exception as e:
+        logger.error(f"Error registering report in project_papers: {e}", exc_info=True)
+
+
 def store_document_files(
     project_id: str,
     doc_id: str,
+    clean_title: str = "research_report",
     pdf_bytes: Optional[bytes] = None,
     docx_bytes: Optional[bytes] = None,
-) -> str:
-    """Stores generated PDF and/or DOCX bytes in the project's documents folder."""
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Stores generated PDF and/or DOCX bytes both locally and to Supabase Storage.
+    Returns (pdf_storage_path, docx_storage_path).
+    """
     project_dir = os.path.join(BASE_DOCS_DIR, _sanitize_filename(project_id))
     os.makedirs(project_dir, exist_ok=True)
 
+    pdf_storage_path: Optional[str] = None
+    docx_storage_path: Optional[str] = None
+    bucket = settings.SUPABASE_STORAGE_BUCKET
+
     if pdf_bytes:
+        # Local backup
         pdf_path = os.path.join(project_dir, f"{doc_id}.pdf")
         with open(pdf_path, "wb") as f:
             f.write(pdf_bytes)
 
+        # Supabase cloud upload
+        pdf_storage_path = f"{project_id}/reports/{doc_id}/{clean_title}.pdf"
+        upload_file_to_supabase(bucket, pdf_storage_path, pdf_bytes, "application/pdf")
+
     if docx_bytes:
+        # Local backup
         docx_path = os.path.join(project_dir, f"{doc_id}.docx")
         with open(docx_path, "wb") as f:
             f.write(docx_bytes)
 
-    return project_dir
+        # Supabase cloud upload
+        docx_storage_path = f"{project_id}/reports/{doc_id}/{clean_title}.docx"
+        upload_file_to_supabase(
+            bucket,
+            docx_storage_path,
+            docx_bytes,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+    return pdf_storage_path, docx_storage_path
 
 
 def get_document_file_path(project_id: str, doc_id: str, format_type: str = "pdf") -> Optional[str]:
-    """Retrieves the file path of a previously generated document."""
+    """Retrieves the file path of a previously generated document from local cache or Supabase Storage."""
     ext = ".docx" if format_type.lower() == "docx" else ".pdf"
     project_dir = os.path.join(BASE_DOCS_DIR, _sanitize_filename(project_id))
     file_path = os.path.join(project_dir, f"{doc_id}{ext}")
+
     if os.path.isfile(file_path):
         return file_path
+
+    # Try downloading from Supabase Storage if missing locally
+    bucket = settings.SUPABASE_STORAGE_BUCKET
+    for candidate in [
+        f"{project_id}/reports/{doc_id}/SupervisorX_{doc_id}{ext}",
+        f"{project_id}/reports/{doc_id}/{doc_id}{ext}",
+    ]:
+        data = download_file_from_supabase(bucket, candidate)
+        if data:
+            os.makedirs(project_dir, exist_ok=True)
+            with open(file_path, "wb") as f:
+                f.write(data)
+            return file_path
+
     return None
 
 
@@ -116,14 +293,26 @@ def create_structured_report(
     if not pdf_bytes and not docx_bytes:
         raise ValueError("Failed to generate both PDF and DOCX document outputs")
 
-    store_document_files(
+    clean_title = _sanitize_filename(title)
+    pdf_storage_path, docx_storage_path = store_document_files(
         project_id=project_id,
         doc_id=doc_id,
+        clean_title=clean_title,
         pdf_bytes=pdf_bytes,
         docx_bytes=docx_bytes,
     )
 
-    clean_title = _sanitize_filename(title)
+    # Register the generated report in project_papers so it appears in the Project Paper Library
+    register_report_in_project_papers(
+        project_id=project_id,
+        doc_id=doc_id,
+        title=title,
+        scope_desc=scope_description or "",
+        pdf_bytes=pdf_bytes,
+        docx_bytes=docx_bytes,
+        pdf_storage_path=pdf_storage_path,
+        docx_storage_path=docx_storage_path,
+    )
     formats_avail = []
     if pdf_bytes:
         formats_avail.append("pdf")

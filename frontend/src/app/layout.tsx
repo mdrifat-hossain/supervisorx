@@ -14,7 +14,8 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "SupervisorX | Your AI Research Supervisor",
-  description: "Analyze papers, understand code, discover research gaps, and accelerate innovation with a persistent knowledge memory for researchers.",
+  description:
+    "Discover candidate papers from arXiv and OpenAlex, extract and analyze PDF methodologies with PyMuPDF, query evidence grounded with section citations, and export structured synthesis reports in PDF and DOCX.",
   icons: {
     icon: [
       { url: "/synergy.png" },
@@ -42,22 +43,52 @@ export default function RootLayout({
             __html: `
               (function() {
                 if (typeof window === 'undefined') return;
+                try {
+                  var origDefProp = Object.defineProperty;
+                  Object.defineProperty = function(obj, prop, descriptor) {
+                    if ((obj === window || (typeof Window !== 'undefined' && obj === Window.prototype)) && prop === 'location') {
+                      return obj;
+                    }
+                    return origDefProp.call(Object, obj, prop, descriptor);
+                  };
+                } catch (e) {}
+
+                var isExtensionErr = function(str, fn) {
+                  var s = String(str || '').toLowerCase();
+                  var f = String(fn || '').toLowerCase();
+                  return s.indexOf('location') !== -1 || s.indexOf('cently') !== -1 || s.indexOf('redirection') !== -1 || f.indexOf('chrome-extension://') !== -1;
+                };
+
                 window.addEventListener('error', function(event) {
-                  var fn = event.filename || '';
-                  var msg = event.message || '';
-                  if (fn.indexOf('chrome-extension://') !== -1 || msg.indexOf('redirection') !== -1 || msg.indexOf('cently') !== -1 || msg.indexOf('location') !== -1) {
+                  if (isExtensionErr(event.message, event.filename)) {
                     event.stopImmediatePropagation();
                     event.preventDefault();
                     return true;
                   }
                 }, true);
+
                 window.addEventListener('unhandledrejection', function(event) {
-                  var str = String(event.reason || '');
-                  if (str.indexOf('chrome-extension://') !== -1 || str.indexOf('redirection') !== -1 || str.indexOf('cently') !== -1 || str.indexOf('location') !== -1) {
+                  if (isExtensionErr(event.reason, '')) {
                     event.stopImmediatePropagation();
                     event.preventDefault();
                   }
                 }, true);
+
+                var origOnError = window.onerror;
+                window.onerror = function(msg, url, line, col, error) {
+                  if (isExtensionErr(msg, url)) {
+                    return true;
+                  }
+                if (typeof origOnError === 'function') {
+                    return origOnError.apply(this, arguments);
+                  }
+                };
+
+                window.addEventListener('pageshow', function(event) {
+                  if (event.persisted) {
+                    window.location.reload();
+                  }
+                });
               })();
             `,
           }}

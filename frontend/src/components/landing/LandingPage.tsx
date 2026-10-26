@@ -12,14 +12,14 @@ export default function LandingPage() {
   >([
     {
       role: "user",
-      text: "Can you analyze the ablation study in the 'Transformer-XL' paper and tell me why the relative positional encoding was critical?",
+      text: "What are the key differences in positional encodings between Transformer-XL and RoFormer, and which sections discuss this?",
     },
     {
       role: "ai",
-      text: "Analyzing Transformer-XL (Dai et al., 2019)... The relative positional encoding is critical because it maintains temporal coherence across segment boundaries.",
+      text: "Based on analyzed manuscripts: Transformer-XL (Dai et al., arXiv:1901.02860) introduces segment-level recurrence with relative positional encodings to preserve temporal order across chunks without fragmentation [Section 3.3, Page 4]. In contrast, RoFormer (Su et al., arXiv:2104.09864) applies Rotary Position Embedding (RoPE) directly to query/key inner products [Section 2.1, Page 3].",
       citation:
-        '"Standard absolute encodings fail to generalize to longer sequences during inference... [Page 4, Section 3.3]"',
-      tags: ["PDF-ID: 4192", "SECTION: 3.3"],
+        '"Standard absolute encodings fail to generalize to longer sequences during inference... [Transformer-XL, Page 4, Section 3.3]"',
+      tags: ["ARXIV: 1901.02860", "SECTION: 3.3", "PAGE 4"],
     },
   ]);
 
@@ -43,9 +43,10 @@ export default function LandingPage() {
   // Interactive typewriter simulation
   useEffect(() => {
     const phrases = [
-      "Explain Neural ODEs...",
-      "Find gaps in LLM reasoning papers...",
-      "Generate a PyTorch skeleton for this paper...",
+      "Compare attention mechanisms across indexed papers...",
+      "What datasets and evaluation metrics did Section 4 use?",
+      "Screen arXiv and OpenAlex for sparse attention papers...",
+      "Export literature review to structured DOCX...",
     ];
     let phraseIndex = 0;
     let charIndex = 0;
@@ -89,10 +90,10 @@ export default function LandingPage() {
         ...prev,
         {
           role: "ai",
-          text: `Grounded synthesis retrieved across your indexed papers for: "${userText}". All citations verified against primary sources.`,
+          text: `Retrieved evidence grounded across your analyzed papers for: "${userText}". All citations verified against primary PDF page anchors.`,
           citation:
-            '"Evidence retrieved with 98.4% precision against document embeddings. [Page 2, Section 1.2]"',
-          tags: ["PDF-ID: 5208", "SECTION: 1.2"],
+            '"Evidence extracted with section-aware PyMuPDF chunking and pgvector semantic retrieval. [Section 3.2, Page 5]"',
+          tags: ["ARXIV: 2401.08828", "SECTION: 3.2", "PAGE 5"],
         },
       ]);
     }, 900);
@@ -155,24 +156,23 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-32 pb-24 overflow-hidden">
+      <section className="relative min-h-screen flex flex-col justify-center pt-20 pb-16 overflow-hidden">
         <div className="absolute inset-0 z-0 pointer-events-none">
           <div className="absolute top-[10%] left-[15%] w-[500px] h-[500px] bg-primary/5 blur-[140px] rounded-full"></div>
           <div className="absolute top-[30%] right-[10%] w-[450px] h-[450px] bg-tertiary/5 blur-[120px] rounded-full"></div>
         </div>
 
-        <div className="max-w-container-max mx-auto px-lg relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+        <div className="max-w-container-max mx-auto px-lg relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center w-full my-auto">
           <div className="reveal active flex flex-col items-start w-full min-w-0">
             <span className="inline-block px-3 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full font-label-md text-xs sm:text-label-md mb-md whitespace-nowrap">
-              v2.0 Now Researching
+              v1.0 • Research Assistant &amp; Literature Vault
             </span>
             <h1 className="font-display-lg text-4xl sm:text-5xl lg:text-[56px] text-on-background mb-lg leading-[1.15] tracking-tight font-bold">
               Your AI <br className="hidden sm:inline" />
               <span className="text-primary">Research Supervisor</span>
             </h1>
             <p className="font-body-lg text-base sm:text-body-lg text-on-surface-variant mb-xl max-w-[540px] leading-relaxed">
-              Analyze papers, understand code, discover research gaps, and accelerate innovation with
-              a persistent knowledge memory for researchers.
+              Discover candidate papers from arXiv and OpenAlex, extract and analyze PDF methodologies with PyMuPDF, query evidence grounded with section citations, and export structured synthesis reports in PDF and DOCX.
             </p>
             <div className="flex flex-wrap gap-md items-center">
               <Link
@@ -182,10 +182,10 @@ export default function LandingPage() {
                 Start Research <span className="material-symbols-outlined">bolt</span>
               </Link>
               <a
-                href="#demo"
+                href="#features"
                 className="glass-panel text-on-surface border border-outline-variant/30 px-8 py-3.5 rounded-full font-headline-md text-base sm:text-headline-md flex items-center gap-sm hover:bg-surface-container-high transition-colors"
               >
-                Watch Demo <span className="material-symbols-outlined">play_circle</span>
+                Explore Platform <span className="material-symbols-outlined">expand_more</span>
               </a>
             </div>
           </div>
@@ -194,17 +194,27 @@ export default function LandingPage() {
             <div className="relative group">
               <div className="absolute -inset-1.5 bg-gradient-to-r from-primary/30 to-tertiary/30 rounded-2xl blur-xl opacity-30 group-hover:opacity-60 transition duration-1000 group-hover:duration-300"></div>
 
-              {/* Dashboard Preview Image Container */}
+              {/* Animated AI Illustration Container */}
               <div className="relative w-full rounded-2xl glass-panel p-2 sm:p-3 shadow-2xl border border-outline-variant/30 overflow-hidden group">
                 <img
-                  src="/dashboard-image.png"
-                  alt="SupervisorX Research Dashboard Preview"
-                  className="w-full h-auto rounded-xl object-cover border border-outline-variant/20 shadow-inner transition-transform duration-500 group-hover:scale-[1.01]"
+                  src="/work-with-ai.svg"
+                  alt="Work with Artificial Intelligence"
+                  className="w-full h-auto rounded-xl object-contain border border-outline-variant/20 shadow-inner transition-transform duration-500 group-hover:scale-[1.01]"
                   loading="eager"
                 />
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Scroll to explore hint */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 text-on-surface-variant/50 hover:text-primary transition-colors pointer-events-none">
+          <span className="text-[11px] font-label-md uppercase tracking-widest font-semibold">
+            Scroll to explore
+          </span>
+          <span className="material-symbols-outlined text-lg animate-bounce">
+            keyboard_arrow_down
+          </span>
         </div>
       </section>
 
@@ -246,107 +256,108 @@ export default function LandingPage() {
             Augmented Intelligence for Researchers
           </h2>
           <p className="font-body-md text-base sm:text-lg text-on-surface-variant w-full max-w-[720px] mx-auto leading-relaxed text-center">
-            Beyond chat. SupervisorX provides the heavy-duty analytical capabilities required for
-            high-impact scientific work.
+            Grounded in scientific literature. SupervisorX provides the end-to-end analytical workflow required for
+            evidence-based academic and industrial research.
           </p>
         </div>
 
         <div className="bento-grid">
-          {/* Paper Discovery */}
+          {/* Candidate Paper Discovery */}
           <div className="col-span-12 md:col-span-8 glass-panel p-lg rounded-xl hover:border-primary/50 transition-colors group">
             <div className="flex flex-col md:flex-row gap-lg items-center">
               <div className="flex-1">
-                <span className="material-symbols-outlined text-primary mb-sm">manage_search</span>
-                <h3 className="font-headline-md text-headline-md mb-sm">Paper Discovery</h3>
+                <span className="material-symbols-outlined text-primary mb-sm">travel_explore</span>
+                <h3 className="font-headline-md text-headline-md mb-sm">Candidate Paper Discovery</h3>
                 <p className="font-body-md text-body-md text-on-surface-variant">
-                  Semantic discovery engine that finds relevant work based on conceptual similarity
-                  rather than just keywords. Understands the nuances of specialized subfields.
+                  Search supported academic sources (arXiv &amp; OpenAlex). Collects candidates in batches, screens titles
+                  and abstracts with configurable relevance thresholds, and ranks qualifying papers by semantic match and recency.
                 </p>
               </div>
-              <div className="w-full md:w-64 h-48 bg-surface-container rounded-lg overflow-hidden relative flex items-center justify-center">
-                <span className="material-symbols-outlined text-6xl text-primary/20 group-hover:scale-110 transition-transform duration-500">
-                  travel_explore
-                </span>
+              <div className="w-full md:w-64 h-48 bg-surface-container rounded-lg overflow-hidden relative flex items-center justify-center border border-outline-variant/20">
+                <div className="p-md text-center">
+                  <span className="material-symbols-outlined text-4xl text-primary mb-xs">
+                    manage_search
+                  </span>
+                  <div className="text-xs font-label-md text-primary font-bold">arXiv &amp; OpenAlex</div>
+                  <div className="text-[10px] text-on-surface-variant mt-1">Multi-Batch Relevance Screening</div>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* AI Literature Review */}
+          {/* Section-Aware PDF Extraction */}
           <div className="col-span-12 md:col-span-4 glass-panel p-lg rounded-xl hover:border-primary/50 transition-colors">
-            <span className="material-symbols-outlined text-primary mb-sm">summarize</span>
-            <h3 className="font-headline-md text-headline-md mb-sm">Literature Review</h3>
+            <span className="material-symbols-outlined text-primary mb-sm">picture_as_pdf</span>
+            <h3 className="font-headline-md text-headline-md mb-sm">Section-Aware Extraction</h3>
             <p className="font-body-md text-body-md text-on-surface-variant">
-              Synthesize thousands of pages into executive summaries, identifying consensus and
-              controversies in seconds.
+              PyMuPDF parses PDF text, page boundaries, structural hierarchies, and figures into section-aware chunks stored in PostgreSQL with pgvector embeddings.
             </p>
           </div>
 
-          {/* Research Memory */}
+          {/* Evidence-Grounded AI */}
           <div className="col-span-12 md:col-span-4 glass-panel p-lg rounded-xl hover:border-primary/50 transition-colors">
-            <span className="material-symbols-outlined text-primary mb-sm">memory</span>
-            <h3 className="font-headline-md text-headline-md mb-sm">Research Memory</h3>
+            <span className="material-symbols-outlined text-primary mb-sm">psychology</span>
+            <h3 className="font-headline-md text-headline-md mb-sm">Evidence-Grounded AI</h3>
             <p className="font-body-md text-body-md text-on-surface-variant">
-              Your personal AI brain. SupervisorX remembers every paper you&apos;ve read, creating a
-              persistent graph of your unique knowledge base.
+              Gemini-powered research supervisor retrieves relevant evidence across your analyzed papers. Every claim is strictly grounded with transparent citations.
             </p>
           </div>
 
-          {/* Figure Analysis */}
+          {/* Verifiable Citation Anchors */}
           <div className="col-span-12 md:col-span-8 glass-panel p-lg rounded-xl hover:border-primary/50 transition-colors group">
             <div className="flex flex-col md:flex-row gap-lg items-center">
               <div className="w-full md:w-64 h-48 bg-surface-container rounded-lg relative overflow-hidden flex items-center justify-center border border-outline-variant/20">
                 <div className="p-md text-center">
                   <span className="material-symbols-outlined text-4xl text-primary mb-xs">
-                    query_stats
+                    verified
                   </span>
-                  <div className="text-xs font-label-md text-primary font-bold">FIGURE EXTRACTION</div>
-                  <div className="text-[10px] text-on-surface-variant mt-1">PyMuPDF Neural Parser</div>
+                  <div className="text-xs font-label-md text-primary font-bold">PAGE-LEVEL ANCHORS</div>
+                  <div className="text-[10px] text-on-surface-variant mt-1">Paper • Section • Page Number</div>
                 </div>
               </div>
               <div className="flex-1">
-                <span className="material-symbols-outlined text-primary mb-sm">query_stats</span>
-                <h3 className="font-headline-md text-headline-md mb-sm">Figure Analysis</h3>
+                <span className="material-symbols-outlined text-primary mb-sm">fact_check</span>
+                <h3 className="font-headline-md text-headline-md mb-sm">Verifiable Citation Anchors</h3>
                 <p className="font-body-md text-body-md text-on-surface-variant">
-                  Extract data directly from charts and tables. SupervisorX understands the math behind
-                  the visuals to verify experimental results.
+                  Zero hallucinations. Answers include transparent references linked directly to the primary paper title, structural section name, and exact PDF page number with supporting excerpts.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Code Analysis */}
+          {/* Cross-Project Paper Sharing */}
           <div className="col-span-12 md:col-span-6 lg:col-span-3 glass-panel p-lg rounded-xl hover:border-primary/50 transition-colors">
-            <span className="material-symbols-outlined text-primary mb-sm">terminal</span>
-            <h3 className="font-headline-md text-headline-md mb-sm">Code Analysis</h3>
+            <span className="material-symbols-outlined text-primary mb-sm">folder_shared</span>
+            <h3 className="font-headline-md text-headline-md mb-sm">Shared Paper Vault</h3>
             <p className="font-body-md text-body-md text-on-surface-variant">
-              Map equations in papers directly to implementation in GitHub repositories.
+              Import papers between projects instantly with shared metadata and without duplicate cloud storage.
             </p>
           </div>
 
-          {/* Gap Detection */}
+          {/* Multi-Paper Comparison */}
           <div className="col-span-12 md:col-span-6 lg:col-span-3 glass-panel p-lg rounded-xl hover:border-primary/50 transition-colors">
-            <span className="material-symbols-outlined text-primary mb-sm">extension</span>
-            <h3 className="font-headline-md text-headline-md mb-sm">Gap Detection</h3>
+            <span className="material-symbols-outlined text-primary mb-sm">compare_arrows</span>
+            <h3 className="font-headline-md text-headline-md mb-sm">Paper Comparisons</h3>
             <p className="font-body-md text-body-md text-on-surface-variant">
-              AI identifies unexplored areas where current literature leaves unanswered questions.
+              Generate structured, multi-paper comparative matrices contrasting methodologies, datasets, and benchmark metrics.
             </p>
           </div>
 
-          {/* Shadow Pipeline */}
+          {/* Structured PDF & DOCX Export */}
           <div className="col-span-12 md:col-span-6 lg:col-span-3 glass-panel p-lg rounded-xl hover:border-primary/50 transition-colors">
-            <span className="material-symbols-outlined text-primary mb-sm">auto_graph</span>
-            <h3 className="font-headline-md text-headline-md mb-sm">Shadow Pipeline</h3>
+            <span className="material-symbols-outlined text-primary mb-sm">description</span>
+            <h3 className="font-headline-md text-headline-md mb-sm">PDF &amp; DOCX Export</h3>
             <p className="font-body-md text-body-md text-on-surface-variant">
-              Generate automated experiment pipelines from textual descriptions of methodologies.
+              Export synthesis reports using ReportLab and python-docx, complete with headings, citations, and bibliographies.
             </p>
           </div>
 
-          {/* Experiment Tracking */}
+          {/* Task Priority Sticky Notes */}
           <div className="col-span-12 md:col-span-6 lg:col-span-3 glass-panel p-lg rounded-xl hover:border-primary/50 transition-colors">
-            <span className="material-symbols-outlined text-primary mb-sm">monitoring</span>
-            <h3 className="font-headline-md text-headline-md mb-sm">Exp Tracking</h3>
+            <span className="material-symbols-outlined text-primary mb-sm">sticky_note_2</span>
+            <h3 className="font-headline-md text-headline-md mb-sm">Workspace Sticky Notes</h3>
             <p className="font-body-md text-body-md text-on-surface-variant">
-              Log variables, results, and AI-driven insights in a unified research ledger.
+              Track project hypotheses, checkpoints, and pending review tasks with High, Medium, or Low priority statuses.
             </p>
           </div>
         </div>
@@ -358,11 +369,11 @@ export default function LandingPage() {
           <div className="grid lg:grid-cols-2 gap-2xl items-center">
             <div className="reveal active">
               <h2 className="font-headline-lg text-headline-lg mb-lg">
-                Talk to your research like never before.
+                Talk directly to your research literature.
               </h2>
               <p className="font-body-lg text-body-lg text-on-surface-variant mb-xl">
-                SupervisorX isn&apos;t a general LLM. It&apos;s grounded in the latest scientific
-                corpora, ensuring every claim is backed by a citation you can verify.
+                SupervisorX isn&apos;t a generic chatbot. It retrieves grounded evidence directly from your project&apos;s
+                analyzed PDF papers, ensuring every statement is verified with source citations.
               </p>
               <div className="space-y-md">
                 <div className="flex items-start gap-md">
@@ -370,21 +381,21 @@ export default function LandingPage() {
                     <span className="material-symbols-outlined text-primary">verified</span>
                   </div>
                   <div>
-                    <h4 className="font-bold text-on-background">Verifiable Citations</h4>
+                    <h4 className="font-bold text-on-background">Verifiable Page Anchors</h4>
                     <p className="text-on-surface-variant">
-                      Every answer includes direct links to relevant snippets in the source PDF.
+                      Every answer references the exact paper title, section heading, and PDF page number.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-start gap-md">
                   <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                    <span className="material-symbols-outlined text-primary">psychology</span>
+                    <span className="material-symbols-outlined text-primary">manage_search</span>
                   </div>
                   <div>
-                    <h4 className="font-bold text-on-background">Conceptual Reasoning</h4>
+                    <h4 className="font-bold text-on-background">pgvector Semantic Retrieval</h4>
                     <p className="text-on-surface-variant">
-                      The AI can bridge the gap between abstract theory and practical implementation.
+                      High-dimensional vector embeddings retrieve the most relevant passages from your indexed manuscripts.
                     </p>
                   </div>
                 </div>
@@ -481,7 +492,7 @@ export default function LandingPage() {
           <div className="text-center mb-2xl">
             <h2 className="font-headline-lg text-headline-lg">Your Research, Interconnected.</h2>
             <p className="font-body-md text-body-md text-on-surface-variant">
-              SupervisorX automatically builds a knowledge graph as you ingest information.
+              pgvector embeddings map conceptual and methodological links across your project papers.
             </p>
           </div>
 
@@ -492,10 +503,10 @@ export default function LandingPage() {
             {/* Overlay UI Previews */}
             <div className="absolute top-10 left-10 glass-panel p-md rounded-lg max-w-[280px] animate-pulse border border-primary/20">
               <h4 className="font-label-md text-label-md font-bold mb-xs text-primary">
-                ACTIVE NEURON CLUSTER
+                INDEXED EVIDENCE CLUSTER
               </h4>
               <p className="font-body-md text-body-md opacity-80 text-on-surface">
-                94 nodes identified in current project scope. Overlap detected with &apos;Attention
+                128 section chunks indexed across active project papers. Semantic overlap with &apos;Attention
                 Mechanisms&apos;.
               </p>
             </div>
@@ -504,7 +515,7 @@ export default function LandingPage() {
               <div className="flex items-center gap-sm mb-sm">
                 <div className="w-2 h-2 rounded-full bg-primary animate-ping"></div>
                 <h4 className="font-label-md text-label-md font-bold text-on-surface">
-                  REAL-TIME MEMORY MAPPING
+                  PGVECTOR RETRIEVAL
                 </h4>
               </div>
               <div className="space-y-xs opacity-70">
@@ -531,26 +542,30 @@ export default function LandingPage() {
               <ul className="space-y-md">
                 <li className="flex items-center gap-sm text-on-surface-variant">
                   <span className="material-symbols-outlined text-error">close</span>
-                  Manual citation management
+                  Manual arXiv searches across disconnected browser tabs
                 </li>
                 <li className="flex items-center gap-sm text-on-surface-variant">
                   <span className="material-symbols-outlined text-error">close</span>
-                  Fragmented knowledge (tabs/folders)
+                  Lost citations and untraceable claims without page numbers
                 </li>
                 <li className="flex items-center gap-sm text-on-surface-variant">
                   <span className="material-symbols-outlined text-error">close</span>
-                  Days to synthesize 20+ papers
+                  Hours manually compiling comparative tables across PDFs
                 </li>
                 <li className="flex items-center gap-sm text-on-surface-variant">
                   <span className="material-symbols-outlined text-error">close</span>
-                  Context lost between projects
+                  Duplicate PDF downloads wasting disk and cloud storage
+                </li>
+                <li className="flex items-center gap-sm text-on-surface-variant">
+                  <span className="material-symbols-outlined text-error">close</span>
+                  Scattered notes with no project-scoped task tracking
                 </li>
               </ul>
             </div>
 
             <div className="p-xl rounded-2xl glass-panel border border-primary/30 ring-1 ring-primary/20 ink-shadow relative overflow-hidden">
               <div className="absolute top-0 right-0 p-sm bg-primary text-on-primary font-label-md text-[10px] font-bold uppercase tracking-widest rounded-bl-lg">
-                Advanced AI
+                Evidence-Grounded AI
               </div>
               <h3 className="font-headline-md text-headline-md mb-lg text-primary">
                 SupervisorX Workflow
@@ -563,7 +578,7 @@ export default function LandingPage() {
                   >
                     check_circle
                   </span>
-                  Automated semantic indexing
+                  Candidate screening via arXiv &amp; OpenAlex with relevance budgets
                 </li>
                 <li className="flex items-center gap-sm text-on-surface">
                   <span
@@ -572,7 +587,7 @@ export default function LandingPage() {
                   >
                     check_circle
                   </span>
-                  Unified Research Memory
+                  Verifiable citations citing paper title, section &amp; exact PDF page
                 </li>
                 <li className="flex items-center gap-sm text-on-surface">
                   <span
@@ -581,7 +596,7 @@ export default function LandingPage() {
                   >
                     check_circle
                   </span>
-                  Instant synthesis across library
+                  PyMuPDF section extraction &amp; pgvector semantic retrieval
                 </li>
                 <li className="flex items-center gap-sm text-on-surface">
                   <span
@@ -590,7 +605,16 @@ export default function LandingPage() {
                   >
                     check_circle
                   </span>
-                  Cross-project insight persistence
+                  Cross-project paper sharing without duplicate storage
+                </li>
+                <li className="flex items-center gap-sm text-on-surface">
+                  <span
+                    className="material-symbols-outlined text-primary"
+                    style={{ fontVariationSettings: "'FILL' 1" }}
+                  >
+                    check_circle
+                  </span>
+                  One-click structured report export to academic PDF &amp; Word (DOCX)
                 </li>
               </ul>
             </div>
@@ -603,7 +627,7 @@ export default function LandingPage() {
         <div className="text-center mb-2xl">
           <h2 className="font-headline-lg text-headline-lg">Plans for Every Researcher</h2>
           <p className="font-body-md text-body-md text-on-surface-variant">
-            Scale your output with powerful tools designed for academia and industry labs.
+            Built for graduate students, independent scholars, university departments, and industrial research labs.
           </p>
         </div>
 
@@ -611,22 +635,26 @@ export default function LandingPage() {
           {/* Free */}
           <div className="p-2xl rounded-2xl glass-panel border border-outline-variant/20 hover:border-primary/30 transition-all flex flex-col justify-between">
             <div>
-              <h3 className="font-headline-md text-headline-md mb-sm">Free</h3>
+              <h3 className="font-headline-md text-headline-md mb-sm">Scholar Free</h3>
               <div className="flex items-baseline gap-xs mb-lg">
                 <span className="font-display-lg text-headline-lg">$0</span>
                 <span className="text-on-surface-variant">/mo</span>
               </div>
               <ul className="space-y-md mb-2xl text-on-surface-variant">
                 <li className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-primary">check</span> 5 paper
-                  analyses/mo
+                  <span className="material-symbols-outlined text-primary">check</span> 5 Active Projects
                 </li>
                 <li className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-primary">check</span> Basic knowledge
-                  graph
+                  <span className="material-symbols-outlined text-primary">check</span> arXiv &amp; OpenAlex Discovery
                 </li>
                 <li className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-primary">check</span> Citation export
+                  <span className="material-symbols-outlined text-primary">check</span> PyMuPDF PDF Extraction
+                </li>
+                <li className="flex items-center gap-sm">
+                  <span className="material-symbols-outlined text-primary">check</span> Verifiable Citation Anchors
+                </li>
+                <li className="flex items-center gap-sm">
+                  <span className="material-symbols-outlined text-primary">check</span> Sticky Notes Task Tracking
                 </li>
               </ul>
             </div>
@@ -634,7 +662,7 @@ export default function LandingPage() {
               href="/login"
               className="w-full py-md rounded-lg border border-outline-variant/30 hover:bg-surface-container font-bold transition-all text-center block"
             >
-              Start Free
+              Get Started Free
             </Link>
           </div>
 
@@ -642,29 +670,28 @@ export default function LandingPage() {
           <div className="p-2xl rounded-2xl glass-panel border-2 border-primary ink-shadow relative transform hover:-translate-y-2 transition-all flex flex-col justify-between">
             <div>
               <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-on-primary px-lg py-xs rounded-full font-label-md text-label-md font-bold uppercase">
-                Popular
+                Most Popular
               </div>
-              <h3 className="font-headline-md text-headline-md mb-sm text-primary">Research</h3>
+              <h3 className="font-headline-md text-headline-md mb-sm text-primary">Research Scholar</h3>
               <div className="flex items-baseline gap-xs mb-lg">
                 <span className="font-display-lg text-display-lg">$29</span>
                 <span className="text-on-surface-variant">/mo</span>
               </div>
               <ul className="space-y-md mb-2xl">
                 <li className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-primary">check</span> Unlimited paper
-                  analyses
+                  <span className="material-symbols-outlined text-primary">check</span> Unlimited Research Projects
                 </li>
                 <li className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-primary">check</span> Deep Research
-                  Memory
+                  <span className="material-symbols-outlined text-primary">check</span> Cross-Project Paper Sharing
                 </li>
                 <li className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-primary">check</span> Code-Paper
-                  Mapping
+                  <span className="material-symbols-outlined text-primary">check</span> Comparative Literature Matrices
                 </li>
                 <li className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-primary">check</span> Shadow Pipeline
-                  generation
+                  <span className="material-symbols-outlined text-primary">check</span> PDF &amp; Word (DOCX) Export
+                </li>
+                <li className="flex items-center gap-sm">
+                  <span className="material-symbols-outlined text-primary">check</span> pgvector Semantic Search
                 </li>
               </ul>
             </div>
@@ -672,32 +699,32 @@ export default function LandingPage() {
               href="/login"
               className="w-full py-md rounded-lg ai-gradient-bg text-on-primary font-bold hover:brightness-110 shadow-lg transition-all text-center block"
             >
-              Get Pro
+              Start Free Trial
             </Link>
           </div>
 
           {/* Enterprise */}
           <div className="p-2xl rounded-2xl glass-panel border border-outline-variant/20 hover:border-primary/30 transition-all flex flex-col justify-between">
             <div>
-              <h3 className="font-headline-md text-headline-md mb-sm">Enterprise</h3>
+              <h3 className="font-headline-md text-headline-md mb-sm">Academic Lab</h3>
               <div className="flex items-baseline gap-xs mb-lg">
                 <span className="font-display-lg text-headline-lg">Custom</span>
               </div>
               <ul className="space-y-md mb-2xl text-on-surface-variant">
                 <li className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-primary">check</span> Private cloud
-                  deployment
+                  <span className="material-symbols-outlined text-primary">check</span> Multi-seat Research Teams
                 </li>
                 <li className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-primary">check</span> Custom model
-                  fine-tuning
+                  <span className="material-symbols-outlined text-primary">check</span> Private Supabase Storage &amp; DB
                 </li>
                 <li className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-primary">check</span> Team collab
-                  &amp; SSO
+                  <span className="material-symbols-outlined text-primary">check</span> Dedicated Model Providers
                 </li>
                 <li className="flex items-center gap-sm">
-                  <span className="material-symbols-outlined text-primary">check</span> API Access
+                  <span className="material-symbols-outlined text-primary">check</span> Institutional Single Sign-On
+                </li>
+                <li className="flex items-center gap-sm">
+                  <span className="material-symbols-outlined text-primary">check</span> Priority Backend API Access
                 </li>
               </ul>
             </div>
@@ -729,28 +756,28 @@ export default function LandingPage() {
                 </span>
               </div>
               <p className="font-body-md text-body-md text-on-surface-variant mb-md max-w-[320px]">
-                Advanced AI research supervision for the next generation of scientific breakthroughs.
+                ResearchPilot: AI-powered research assistant for students, researchers, and academics to discover, analyze, and synthesize literature.
               </p>
             </div>
 
             <div>
               <h5 className="font-label-md text-label-md font-bold text-on-surface mb-md uppercase tracking-wider">
-                Product
+                Platform
               </h5>
               <ul className="space-y-sm text-on-surface-variant font-label-md text-label-md">
                 <li>
                   <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#features">
-                    Discovery
+                    arXiv Discovery
                   </a>
                 </li>
                 <li>
                   <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#features">
-                    Memory
+                    All Documents
                   </a>
                 </li>
                 <li>
                   <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#features">
-                    Pipelines
+                    PyMuPDF Extraction
                   </a>
                 </li>
                 <li>
@@ -763,27 +790,27 @@ export default function LandingPage() {
 
             <div>
               <h5 className="font-label-md text-label-md font-bold text-on-surface mb-md uppercase tracking-wider">
-                Resources
+                Capabilities
               </h5>
               <ul className="space-y-sm text-on-surface-variant font-label-md text-label-md">
                 <li>
-                  <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#">
-                    Documentation
+                  <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#features">
+                    Verifiable Citations
                   </a>
                 </li>
                 <li>
-                  <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#">
-                    API Reference
+                  <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#features">
+                    pgvector Retrieval
                   </a>
                 </li>
                 <li>
-                  <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#">
-                    Blog
+                  <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#features">
+                    DOCX &amp; PDF Export
                   </a>
                 </li>
                 <li>
-                  <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#">
-                    Status
+                  <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#features">
+                    Workspace Notes
                   </a>
                 </li>
               </ul>
@@ -801,12 +828,7 @@ export default function LandingPage() {
                 </li>
                 <li>
                   <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#">
-                    Careers
-                  </a>
-                </li>
-                <li>
-                  <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#">
-                    Contact
+                    Research Blog
                   </a>
                 </li>
                 <li>
@@ -814,12 +836,17 @@ export default function LandingPage() {
                     Privacy Policy
                   </a>
                 </li>
+                <li>
+                  <a className="hover:text-primary underline-offset-4 hover:underline transition-all" href="#">
+                    Terms of Service
+                  </a>
+                </li>
               </ul>
             </div>
 
             <div>
               <h5 className="font-label-md text-label-md font-bold text-on-surface mb-md uppercase tracking-wider">
-                Social
+                Connect
               </h5>
               <div className="flex gap-md">
                 <a className="text-on-surface-variant hover:text-primary transition-colors" href="#">
@@ -837,7 +864,7 @@ export default function LandingPage() {
 
           <div className="pt-lg border-t border-outline-variant/10 flex flex-col md:flex-row justify-between items-center gap-md">
             <p className="font-body-md text-body-md text-on-surface-variant/60">
-              © 2024 SupervisorX AI Research. All rights reserved.
+              © 2026 SupervisorX (ResearchPilot). Grounded scientific research assistant.
             </p>
             <div className="flex gap-lg text-on-surface-variant font-label-md text-label-md">
               <a className="hover:text-primary transition-colors" href="#">

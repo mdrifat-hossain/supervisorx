@@ -105,6 +105,7 @@ export async function initProjectsTable() {
     ALTER TABLE project_papers ADD COLUMN IF NOT EXISTS vectors_count INTEGER DEFAULT 0;
     ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS citations JSONB DEFAULT '[]'::jsonb;
     ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS intent VARCHAR(50);
+    ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS document JSONB;
     CREATE INDEX IF NOT EXISTS idx_project_papers_status ON project_papers(project_id, analysis_status);
 
     CREATE TABLE IF NOT EXISTS paper_processing_jobs (

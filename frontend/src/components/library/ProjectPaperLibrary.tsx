@@ -23,6 +23,12 @@ export interface LibraryPaper {
   file_size_label: string;
   tags: string[];
   downloaded_at: string;
+  status?: string;
+  analyzed_at?: string;
+  insights?: any;
+  chunks_count?: number;
+  figures_count?: number;
+  vectors_count?: number;
 }
 
 interface ProjectPaperLibraryProps {
@@ -34,6 +40,7 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [yearFilter, setYearFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "papers" | "reports">("all");
   const [sortOption, setSortOption] = useState<
     "az" | "za" | "newest" | "oldest" | "year_desc" | "year_asc" | "size"
   >("az");
@@ -41,6 +48,11 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
   const [selectedPaperIds, setSelectedPaperIds] = useState<string[]>([]);
   const [inspectPaper, setInspectPaper] = useState<LibraryPaper | null>(null);
   const [projectName, setProjectName] = useState<string>("");
+
+  // Deletion states
+  const [deleteTarget, setDeleteTarget] = useState<LibraryPaper | null>(null);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchPapers = async () => {
     setIsLoading(true);
@@ -81,11 +93,24 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
       .catch(() => {});
   }, [projectId]);
 
-  // Handle client-side search filtering if API debounce is not needed
+  // Handle client-side filtering (search and item type: paper vs report)
   const filteredPapers = useMemo(() => {
-    if (!searchQuery.trim()) return papers;
+    let result = papers;
+
+    // Filter by type
+    if (typeFilter === "papers") {
+      result = result.filter(
+        (p) => p.primary_category !== "Generated Report" && p.status !== "report"
+      );
+    } else if (typeFilter === "reports") {
+      result = result.filter(
+        (p) => p.primary_category === "Generated Report" || p.status === "report"
+      );
+    }
+
+    if (!searchQuery.trim()) return result;
     const q = searchQuery.toLowerCase();
-    return papers.filter(
+    return result.filter(
       (p) =>
         p.title.toLowerCase().includes(q) ||
         p.authors.toLowerCase().includes(q) ||
@@ -93,10 +118,16 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
         p.paper_id.toLowerCase().includes(q) ||
         (p.summary && p.summary.toLowerCase().includes(q))
     );
-  }, [papers, searchQuery]);
+  }, [papers, searchQuery, typeFilter]);
 
   // Metrics
   const totalCount = papers.length;
+  const reportsCount = useMemo(
+    () => papers.filter((p) => p.primary_category === "Generated Report" || p.status === "report").length,
+    [papers]
+  );
+  const papersCount = totalCount - reportsCount;
+
   const totalSizeBytes = useMemo(() => {
     return papers.reduce((acc, p) => acc + (Number(p.file_size) || 0), 0);
   }, [papers]);
@@ -122,6 +153,55 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
     );
   };
 
+  // Single paper/report deletion
+  const handleDeleteSingle = async (paper: LibraryPaper) => {
+    try {
+      setIsDeleting(true);
+      const targetId = paper.paper_id || paper.id;
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/papers/${encodeURIComponent(targetId)}`,
+        {
+          method: "DELETE",
+        }
+      );
+      if (!res.ok) throw new Error("Failed to delete item");
+
+      setPapers((prev) => prev.filter((p) => p.id !== paper.id && p.paper_id !== paper.paper_id));
+      setSelectedPaperIds((prev) => prev.filter((id) => id !== paper.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error("Delete failed:", err);
+      alert("Failed to delete item. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Bulk deletion
+  const handleDeleteBulk = async () => {
+    if (selectedPaperIds.length === 0) return;
+    try {
+      setIsDeleting(true);
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/papers`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paperIds: selectedPaperIds }),
+      });
+      if (!res.ok) throw new Error("Failed to delete selected items");
+
+      setPapers((prev) =>
+        prev.filter((p) => !selectedPaperIds.includes(p.id) && !selectedPaperIds.includes(p.paper_id))
+      );
+      setSelectedPaperIds([]);
+      setShowBulkDeleteConfirm(false);
+    } catch (err) {
+      console.error("Bulk delete failed:", err);
+      alert("Failed to delete selected items. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-background text-on-surface font-sans antialiased">
       {/* Shared Project Sidebar with Library Tab Active */}
@@ -141,18 +221,18 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                 library_books
               </span>
               <span className="font-label-md text-xs uppercase tracking-wider text-primary font-semibold">
-                Project Library
+                All Documents
               </span>
             </div>
             <h1 className="font-headline-lg text-2xl md:text-3xl font-bold tracking-tight text-on-surface">
-              Paper Library
+              All Documents
             </h1>
             <p className="text-on-surface-variant text-sm mt-1 max-w-2xl">
-              Archived research literature downloaded for{" "}
+              Archived research literature and AI synthesis reports for{" "}
               <span className="text-primary font-medium">
                 {projectName || projectId}
               </span>
-              . Search, sort, and open any stored manuscript.
+              . Download, review, or clean up stored items to save cloud storage.
             </p>
           </div>
 
@@ -162,14 +242,23 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
               <span className="material-symbols-outlined text-primary text-base">
                 description
               </span>
-              <span className="text-on-surface-variant">Downloaded Papers:</span>
-              <span className="font-bold text-on-surface font-mono">{totalCount}</span>
+              <span className="text-on-surface-variant">Papers:</span>
+              <span className="font-bold text-on-surface font-mono">{papersCount}</span>
             </div>
+            {reportsCount > 0 && (
+              <div className="glass-panel px-3.5 py-2 rounded-lg flex items-center gap-2 text-xs border border-amber-500/30 bg-amber-500/5">
+                <span className="material-symbols-outlined text-amber-400 text-base">
+                  auto_awesome_motion
+                </span>
+                <span className="text-amber-200/80">AI Reports:</span>
+                <span className="font-bold text-amber-300 font-mono">{reportsCount}</span>
+              </div>
+            )}
             <div className="glass-panel px-3.5 py-2 rounded-lg flex items-center gap-2 text-xs border border-outline-variant/30 bg-surface-container-low">
               <span className="material-symbols-outlined text-secondary text-base">
                 inventory_2
               </span>
-              <span className="text-on-surface-variant">Storage Occupied:</span>
+              <span className="text-on-surface-variant">Cloud Storage:</span>
               <span className="font-bold text-emerald-400 font-mono">
                 {totalStorageLabel}
               </span>
@@ -187,15 +276,15 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
               className="px-3.5 py-2 bg-primary text-on-primary hover:brightness-110 rounded-lg text-xs font-label-md font-semibold flex items-center gap-1.5 transition-all shadow-sm shadow-primary/20"
             >
               <span className="material-symbols-outlined text-base">smart_toy</span>
-              <span>Find More Papers</span>
+              <span>Research Chatbot</span>
             </Link>
           </div>
         </div>
 
-        {/* Toolbar: Search, Year Filter, Sorting */}
+        {/* Toolbar: Category Filter, Search, Year Filter, Sorting & Bulk Actions */}
         <div className="glass-panel p-4 rounded-xl flex flex-col xl:flex-row xl:items-center justify-between gap-4 border border-outline-variant/30 ink-shadow bg-surface-container-low">
-          {/* Left: Checkbox Select All & Selection Count */}
-          <div className="flex items-center gap-3">
+          {/* Left: Checkbox Select All, Selection Count & Bulk Delete */}
+          <div className="flex items-center gap-3 flex-wrap">
             <label className="flex items-center gap-2 cursor-pointer bg-surface-container-high/60 px-3 py-1.5 rounded-lg border border-outline-variant/40 hover:border-primary/40 transition-colors">
               <input
                 type="checkbox"
@@ -210,11 +299,57 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                 Select All ({filteredPapers.length})
               </span>
             </label>
+
             {selectedPaperIds.length > 0 && (
-              <span className="text-xs px-2.5 py-1.5 rounded-lg bg-surface-container-highest text-primary font-medium border border-outline-variant/30">
-                {selectedPaperIds.length} selected
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs px-2.5 py-1.5 rounded-lg bg-surface-container-highest text-primary font-medium border border-outline-variant/30">
+                  {selectedPaperIds.length} selected
+                </span>
+                <button
+                  onClick={() => setShowBulkDeleteConfirm(true)}
+                  disabled={isDeleting}
+                  className="px-3 py-1.5 rounded-lg text-xs font-label-md font-semibold bg-error/15 border border-error/30 text-error hover:bg-error hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                  title="Delete all selected items and free cloud storage"
+                >
+                  <span className="material-symbols-outlined text-sm">delete</span>
+                  <span>Delete Selected ({selectedPaperIds.length})</span>
+                </button>
+              </div>
             )}
+
+            {/* Type Filter Pills: All / Papers / Reports */}
+            <div className="flex items-center gap-1 bg-surface-container-high p-1 rounded-lg border border-outline-variant/30">
+              <button
+                onClick={() => setTypeFilter("all")}
+                className={`px-2.5 py-1 rounded text-xs font-label-md transition-colors cursor-pointer ${
+                  typeFilter === "all"
+                    ? "bg-primary text-on-primary font-semibold shadow-sm"
+                    : "text-on-surface-variant hover:text-on-surface"
+                }`}
+              >
+                All ({totalCount})
+              </button>
+              <button
+                onClick={() => setTypeFilter("papers")}
+                className={`px-2.5 py-1 rounded text-xs font-label-md transition-colors cursor-pointer ${
+                  typeFilter === "papers"
+                    ? "bg-primary text-on-primary font-semibold shadow-sm"
+                    : "text-on-surface-variant hover:text-on-surface"
+                }`}
+              >
+                Papers ({papersCount})
+              </button>
+              <button
+                onClick={() => setTypeFilter("reports")}
+                className={`px-2.5 py-1 rounded text-xs font-label-md transition-colors cursor-pointer ${
+                  typeFilter === "reports"
+                    ? "bg-amber-500 text-black font-semibold shadow-sm"
+                    : "text-amber-300/80 hover:text-amber-200"
+                }`}
+              >
+                AI Reports ({reportsCount})
+              </button>
+            </div>
           </div>
 
           {/* Right: Search Input, Year Filter Dropdown, Sort Dropdown */}
@@ -314,11 +449,12 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
             </div>
 
             {/* Clear Filters Button if any active */}
-            {(searchQuery || yearFilter !== "all") && (
+            {(searchQuery || yearFilter !== "all" || typeFilter !== "all") && (
               <button
                 onClick={() => {
                   setSearchQuery("");
                   setYearFilter("all");
+                  setTypeFilter("all");
                 }}
                 className="px-2.5 py-1.5 rounded-lg text-xs font-label-md text-outline hover:text-on-surface hover:bg-surface-container-high transition-colors flex items-center gap-1 cursor-pointer"
                 title="Clear Filters"
@@ -338,12 +474,12 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                 <tr className="border-b border-outline-variant/30 bg-surface-container-low font-label-md text-on-surface-variant text-xs uppercase tracking-wider">
                   <th className="p-4 w-12 text-center">#</th>
                   <th className="p-4 min-w-[340px]">
-                    Research Paper Title &amp; Publication
+                    Document Title &amp; Source
                   </th>
-                  <th className="p-4 min-w-[160px]">Venue &amp; Tags</th>
-                  <th className="p-4 min-w-[140px]">Size &amp; Downloaded</th>
-                  <th className="p-4 text-center w-28">Year</th>
-                  <th className="p-4 text-right w-36">Action</th>
+                  <th className="p-4 min-w-[160px]">Category &amp; Tags</th>
+                  <th className="p-4 min-w-[140px]">Size &amp; Stored</th>
+                  <th className="p-4 text-center w-28">Type / Year</th>
+                  <th className="p-4 text-right w-48">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/20 font-label-md text-xs">
@@ -354,7 +490,7 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                         <span className="material-symbols-outlined text-3xl animate-spin text-primary">
                           progress_activity
                         </span>
-                        <span>Loading project paper library...</span>
+                        <span>Loading project library...</span>
                       </div>
                     </td>
                   </tr>
@@ -368,19 +504,20 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                           </span>
                         </div>
                         <div className="font-semibold text-on-surface text-base">
-                          No papers found
+                          No items found
                         </div>
                         <p className="text-xs text-on-surface-variant leading-relaxed">
-                          {searchQuery || yearFilter !== "all"
-                            ? "No downloaded papers matched your search or year filters. Try adjusting your search term."
-                            : "No papers have been downloaded for this project yet. Use the Find Papers AI Chatbot to scan arXiv and download relevant literature."}
+                          {searchQuery || yearFilter !== "all" || typeFilter !== "all"
+                            ? "No items matched your search or filters. Try adjusting your filter settings."
+                            : "No papers or generated reports stored for this project yet. Use the Chatbot to find papers or generate comprehensive research reports."}
                         </p>
                         <div className="flex items-center gap-3 pt-2">
-                          {(searchQuery || yearFilter !== "all") && (
+                          {(searchQuery || yearFilter !== "all" || typeFilter !== "all") && (
                             <button
                               onClick={() => {
                                 setSearchQuery("");
                                 setYearFilter("all");
+                                setTypeFilter("all");
                               }}
                               className="px-4 py-1.5 bg-surface-container-high border border-outline-variant/40 rounded-lg text-xs font-label-md hover:bg-surface-container cursor-pointer"
                             >
@@ -398,7 +535,7 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                             href={`/projects/${projectId}/chatbot`}
                             className="px-4 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-label-md font-semibold hover:brightness-110 cursor-pointer"
                           >
-                            Open Find Papers Chatbot
+                            Open Research Chatbot
                           </Link>
                         </div>
                       </div>
@@ -407,10 +544,17 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                 ) : (
                   filteredPapers.map((paper) => {
                     const isChecked = selectedPaperIds.includes(paper.id);
+                    const isReport =
+                      paper.primary_category === "Generated Report" || paper.status === "report";
+
                     const privatePdfUrl = paper.storage_path
-                      ? `/api/projects/${encodeURIComponent(projectId)}/papers/${encodeURIComponent(paper.paper_id)}/file`
+                      ? `/api/projects/${encodeURIComponent(projectId)}/papers/${encodeURIComponent(
+                          paper.paper_id || paper.id
+                        )}/file`
                       : null;
+                    const docxDownloadUrl = privatePdfUrl ? `${privatePdfUrl}?format=docx` : null;
                     const openUrl = paper.entry_url || paper.pdf_url || privatePdfUrl || "#";
+
                     return (
                       <tr
                         key={paper.id}
@@ -428,29 +572,43 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                           />
                         </td>
 
-                        {/* Title & Publication Details */}
+                        {/* Title & Document Details */}
                         <td className="p-4">
                           <div className="flex items-start gap-3">
-                            <div className="w-9 h-9 rounded-lg border border-primary/20 bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 mt-0.5">
+                            {/* Icon differentiates report vs paper */}
+                            <div
+                              className={`w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                                isReport
+                                  ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                                  : "border-primary/20 bg-primary/10 text-primary"
+                              }`}
+                            >
                               <span className="material-symbols-outlined text-lg">
-                                article
+                                {isReport ? "description" : "article"}
                               </span>
                             </div>
                             <div className="min-w-0">
-                              <a
-                                href={openUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-medium text-on-surface text-sm hover:text-primary transition-colors inline-flex items-center gap-1 text-left cursor-pointer group"
-                                title="Open Paper Online"
-                              >
-                                <span className="line-clamp-2">{paper.title}</span>
-                                <span className="material-symbols-outlined text-xs text-outline group-hover:text-primary group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0">
-                                  north_east
-                                </span>
-                              </a>
+                              <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                {isReport && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                    AI Report
+                                  </span>
+                                )}
+                                <a
+                                  href={openUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium text-on-surface text-sm hover:text-primary transition-colors inline-flex items-center gap-1 text-left cursor-pointer group"
+                                  title={isReport ? "Open Report PDF" : "Open Paper Online"}
+                                >
+                                  <span className="line-clamp-2">{paper.title}</span>
+                                  <span className="material-symbols-outlined text-xs text-outline group-hover:text-primary group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0">
+                                    north_east
+                                  </span>
+                                </a>
+                              </div>
                               <div className="text-xs text-on-surface-variant mt-1 flex items-center gap-2 flex-wrap">
-                                <span>{paper.authors || "Unknown Authors"}</span>
+                                <span>{paper.authors || (isReport ? "ResearchPilot AI" : "Unknown Authors")}</span>
                                 {paper.paper_id && (
                                   <span className="font-mono text-[11px] px-1.5 py-0.2 bg-surface-container-highest rounded text-outline">
                                     {paper.paper_id}
@@ -461,11 +619,17 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                           </div>
                         </td>
 
-                        {/* Venue & Tags */}
+                        {/* Category & Tags */}
                         <td className="p-4 font-mono text-xs text-on-surface-variant">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="px-2 py-0.5 rounded text-[11px] bg-surface-container-highest border border-primary/20 text-primary font-medium">
-                              {paper.venue || "Academic Publication"}
+                            <span
+                              className={`px-2 py-0.5 rounded text-[11px] font-medium border ${
+                                isReport
+                                  ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                                  : "bg-surface-container-highest border-primary/20 text-primary"
+                              }`}
+                            >
+                              {paper.venue || paper.primary_category || (isReport ? "Generated Report" : "Academic")}
                             </span>
                             {Array.isArray(paper.tags) &&
                               paper.tags.slice(0, 2).map((tag) => (
@@ -479,10 +643,10 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                           </div>
                         </td>
 
-                        {/* File Size & Downloaded Time */}
+                        {/* File Size & Stored Date */}
                         <td className="p-4 font-mono text-xs text-on-surface-variant">
                           <div className="text-on-surface font-medium">
-                            {paper.file_size_label || "PDF Document"}
+                            {paper.file_size_label || "Cloud Storage"}
                           </div>
                           <div className="text-[11px] text-outline mt-0.5">
                             {paper.downloaded_at
@@ -498,42 +662,84 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                           </div>
                         </td>
 
-                        {/* Year */}
+                        {/* Type / Year */}
                         <td className="p-4 text-center">
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-mono bg-surface-container-highest text-on-surface font-semibold border border-outline-variant/30">
-                            {paper.year || "—"}
-                          </span>
+                          {isReport ? (
+                            <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30">
+                              Report
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-mono bg-surface-container-highest text-on-surface font-semibold border border-outline-variant/30">
+                              {paper.year || "—"}
+                            </span>
+                          )}
                         </td>
 
-                        {/* Actions (Direct View/Abstract inspection) */}
+                        {/* Actions (Download PDF, Download DOCX, View Abstract/Summary, Delete) */}
                         <td className="p-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                            {/* Abstract / Summary View */}
                             {paper.summary && (
                               <button
                                 onClick={() => setInspectPaper(paper)}
-                                className="px-2.5 py-1.5 rounded text-xs font-label-md bg-surface-container-high border border-outline-variant/40 hover:border-primary text-on-surface hover:text-primary transition-colors flex items-center gap-1 cursor-pointer"
-                                title="Read Abstract / Summary"
+                                className="px-2 py-1 rounded text-xs font-label-md bg-surface-container-high border border-outline-variant/40 hover:border-primary text-on-surface hover:text-primary transition-colors flex items-center gap-1 cursor-pointer"
+                                title={isReport ? "Read Report Abstract" : "Read Paper Abstract"}
                               >
                                 <span className="material-symbols-outlined text-sm">
                                   subject
                                 </span>
-                                <span>Abstract</span>
+                                <span>{isReport ? "View" : "Abstract"}</span>
                               </button>
                             )}
+
+                            {/* Direct PDF Download / View */}
                             {privatePdfUrl && (
                               <a
                                 href={privatePdfUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="px-2.5 py-1.5 rounded text-xs font-label-md bg-primary/10 border border-primary/30 text-primary hover:bg-primary hover:text-on-primary transition-all flex items-center gap-1 cursor-pointer"
-                                title="Download stored PDF"
+                                className={`px-2 py-1 rounded text-xs font-label-md border transition-all flex items-center gap-1 cursor-pointer ${
+                                  isReport
+                                    ? "bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500 hover:text-black"
+                                    : "bg-primary/10 border-primary/30 text-primary hover:bg-primary hover:text-on-primary"
+                                }`}
+                                title="Download / Open PDF"
                               >
                                 <span className="material-symbols-outlined text-sm">
-                                  open_in_new
+                                  picture_as_pdf
                                 </span>
-                                <span>Open</span>
+                                <span>PDF</span>
                               </a>
                             )}
+
+                            {/* Direct DOCX Download for Generated Reports */}
+                            {isReport && docxDownloadUrl && (
+                              <a
+                                href={docxDownloadUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2 py-1 rounded text-xs font-label-md bg-blue-500/10 border border-blue-500/30 text-blue-400 hover:bg-blue-500 hover:text-white transition-all flex items-center gap-1 cursor-pointer"
+                                title="Download Word Document (.docx)"
+                              >
+                                <span className="material-symbols-outlined text-sm">
+                                  description
+                                </span>
+                                <span>DOCX</span>
+                              </a>
+                            )}
+
+                            {/* Delete single item button */}
+                            <button
+                              onClick={() => setDeleteTarget(paper)}
+                              className="p-1 rounded text-xs bg-error/10 border border-error/20 hover:bg-error/20 text-error transition-colors flex items-center justify-center cursor-pointer"
+                              title={
+                                isReport
+                                  ? "Delete Generated Report and remove from Supabase Storage"
+                                  : "Delete Paper, Supabase PDF, and vector embeddings"
+                              }
+                            >
+                              <span className="material-symbols-outlined text-sm">delete</span>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -545,19 +751,31 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
           </div>
         </div>
 
-        {/* Abstract Modal / Quick Reader Drawer */}
+        {/* Abstract / Quick Reader Modal */}
         {inspectPaper && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
             <div className="glass-panel w-full max-w-2xl bg-surface-container-low border border-primary/30 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
               {/* Modal Header */}
               <div className="p-5 border-b border-outline-variant/30 flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary border border-primary/30 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-xl">article</span>
+                  <div
+                    className={`w-10 h-10 rounded-xl border flex items-center justify-center ${
+                      inspectPaper.primary_category === "Generated Report" || inspectPaper.status === "report"
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                        : "bg-primary/20 text-primary border-primary/30"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-xl">
+                      {inspectPaper.primary_category === "Generated Report" || inspectPaper.status === "report"
+                        ? "description"
+                        : "article"}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[11px] font-mono text-primary uppercase tracking-wider font-semibold">
-                      Paper Details • {inspectPaper.year || "Preprint"}
+                      {inspectPaper.primary_category === "Generated Report" || inspectPaper.status === "report"
+                        ? "AI Generated Synthesis Report"
+                        : `Paper Details • ${inspectPaper.year || "Preprint"}`}
                     </span>
                     <h3 className="font-bold text-base md:text-lg text-on-surface leading-snug line-clamp-2">
                       {inspectPaper.title}
@@ -576,23 +794,23 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
               <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-4 text-sm">
                 <div>
                   <div className="text-xs font-semibold text-outline uppercase tracking-wider mb-1">
-                    Authors
+                    Authors / Creator
                   </div>
                   <div className="text-on-surface font-medium">
-                    {inspectPaper.authors || "Not listed"}
+                    {inspectPaper.authors || "ResearchPilot System"}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="text-xs font-semibold text-outline uppercase tracking-wider mb-1">
-                      Venue
+                      Category
                     </div>
-                    <div className="text-on-surface">{inspectPaper.venue || "Academic"}</div>
+                    <div className="text-on-surface">{inspectPaper.venue || inspectPaper.primary_category || "Academic"}</div>
                   </div>
                   <div>
                     <div className="text-xs font-semibold text-outline uppercase tracking-wider mb-1">
-                      File Archive
+                      File Size
                     </div>
                     <div className="text-on-surface font-mono text-xs">
                       {inspectPaper.file_size_label}
@@ -604,14 +822,14 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                   <div className="text-xs font-semibold text-outline uppercase tracking-wider mb-1.5">
                     Abstract &amp; Summary
                   </div>
-                  <div className="p-4 rounded-xl bg-surface-container-high/60 border border-outline-variant/30 text-on-surface-variant leading-relaxed text-sm">
-                    {inspectPaper.summary || "No abstract available for this paper."}
+                  <div className="p-4 rounded-xl bg-surface-container-high/60 border border-outline-variant/30 text-on-surface-variant leading-relaxed text-sm whitespace-pre-wrap max-h-96 overflow-y-auto">
+                    {inspectPaper.summary || "No abstract or summary available for this item."}
                   </div>
                 </div>
               </div>
 
               {/* Modal Footer */}
-              <div className="p-4 border-t border-outline-variant/30 bg-surface-container-high/40 flex items-center justify-end gap-3">
+              <div className="p-4 border-t border-outline-variant/30 bg-surface-container-high/40 flex items-center justify-end gap-3 flex-wrap">
                 <button
                   onClick={() => setInspectPaper(null)}
                   className="px-4 py-2 rounded-lg text-xs font-label-md bg-surface-container text-on-surface hover:bg-surface-container-highest cursor-pointer transition-colors"
@@ -619,27 +837,153 @@ export default function ProjectPaperLibrary({ projectId }: ProjectPaperLibraryPr
                   Close
                 </button>
                 {(() => {
-                  const targetUrl =
-                    inspectPaper.entry_url ||
-                    inspectPaper.pdf_url ||
-                    (inspectPaper.storage_path
-                      ? `/api/projects/${encodeURIComponent(projectId)}/papers/${encodeURIComponent(inspectPaper.paper_id)}/file`
-                      : null);
-                  if (!targetUrl) return null;
+                  const privatePdfUrl = inspectPaper.storage_path
+                    ? `/api/projects/${encodeURIComponent(projectId)}/papers/${encodeURIComponent(
+                        inspectPaper.paper_id || inspectPaper.id
+                      )}/file`
+                    : null;
+                  const isReport =
+                    inspectPaper.primary_category === "Generated Report" || inspectPaper.status === "report";
+
                   return (
-                    <a
-                      href={targetUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-4 py-2 rounded-lg text-xs font-label-md bg-primary text-on-primary hover:brightness-110 font-bold flex items-center gap-1.5 cursor-pointer shadow-md shadow-primary/20"
-                    >
-                      <span className="material-symbols-outlined text-sm">
-                        open_in_new
-                      </span>
-                      <span>Open Document</span>
-                    </a>
+                    <>
+                      {isReport && privatePdfUrl && (
+                        <a
+                          href={`${privatePdfUrl}?format=docx`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 rounded-lg text-xs font-label-md bg-blue-500/20 text-blue-300 border border-blue-500/40 hover:bg-blue-500 hover:text-white font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-sm">description</span>
+                          <span>Download DOCX</span>
+                        </a>
+                      )}
+                      {(inspectPaper.pdf_url || privatePdfUrl) && (
+                        <a
+                          href={privatePdfUrl || inspectPaper.pdf_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 rounded-lg text-xs font-label-md bg-primary text-on-primary hover:brightness-110 font-bold flex items-center gap-1.5 cursor-pointer shadow-md shadow-primary/20"
+                        >
+                          <span className="material-symbols-outlined text-sm">open_in_new</span>
+                          <span>Open PDF</span>
+                        </a>
+                      )}
+                    </>
                   );
                 })()}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Single Item Delete Confirmation Modal */}
+        {deleteTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+            <div className="glass-panel w-full max-w-lg bg-surface-container-low border border-error/40 rounded-2xl shadow-2xl p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-3 text-error">
+                <div className="w-10 h-10 rounded-xl bg-error/15 flex items-center justify-center border border-error/30">
+                  <span className="material-symbols-outlined text-2xl">warning</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-on-surface">Confirm Permanent Deletion</h3>
+                  <p className="text-xs text-error font-medium">Free up Supabase Storage &amp; clean database</p>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-surface-container-high border border-outline-variant/30 text-xs text-on-surface-variant flex flex-col gap-2">
+                <div>
+                  <span className="text-outline uppercase text-[10px] font-semibold tracking-wider">Item:</span>
+                  <p className="font-semibold text-on-surface text-sm mt-0.5 line-clamp-2">{deleteTarget.title}</p>
+                </div>
+                {deleteTarget.primary_category === "Generated Report" || deleteTarget.status === "report" ? (
+                  <p className="text-amber-300/90 leading-relaxed">
+                    This will permanently delete this Generated Report and remove both its PDF and DOCX files from Supabase Storage.
+                  </p>
+                ) : (
+                  <p className="text-amber-300/90 leading-relaxed">
+                    This will permanently remove the manuscript from Supabase Storage and cascade-delete all its extracted text chunks, vector embeddings, and visual figures from your vector knowledge base.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setDeleteTarget(null)}
+                  className="px-4 py-2 rounded-lg text-xs font-label-md bg-surface-container text-on-surface hover:bg-surface-container-highest cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => handleDeleteSingle(deleteTarget)}
+                  className="px-4 py-2 rounded-lg text-xs font-label-md bg-error text-white font-bold hover:brightness-110 flex items-center gap-1.5 cursor-pointer shadow-md shadow-error/20 disabled:opacity-50"
+                >
+                  {isDeleting ? (
+                    <>
+                      <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-sm">delete_forever</span>
+                      <span>Delete Item</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Delete Confirmation Modal */}
+        {showBulkDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+            <div className="glass-panel w-full max-w-lg bg-surface-container-low border border-error/40 rounded-2xl shadow-2xl p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-3 text-error">
+                <div className="w-10 h-10 rounded-xl bg-error/15 flex items-center justify-center border border-error/30">
+                  <span className="material-symbols-outlined text-2xl">delete_sweep</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-on-surface">Delete {selectedPaperIds.length} Selected Items?</h3>
+                  <p className="text-xs text-error font-medium">Bulk cloud storage and knowledge cleanup</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-on-surface-variant leading-relaxed">
+                You are about to delete <strong className="text-on-surface">{selectedPaperIds.length}</strong> items. This action will permanently remove all associated PDF and DOCX files from Supabase Storage and remove all related vector embeddings, extracted text chunks, and analyzed visual diagrams from the database.
+              </p>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setShowBulkDeleteConfirm(false)}
+                  className="px-4 py-2 rounded-lg text-xs font-label-md bg-surface-container text-on-surface hover:bg-surface-container-highest cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={handleDeleteBulk}
+                  className="px-4 py-2 rounded-lg text-xs font-label-md bg-error text-white font-bold hover:brightness-110 flex items-center gap-1.5 cursor-pointer shadow-md shadow-error/20 disabled:opacity-50"
+                >
+                  {isDeleting ? (
+                    <>
+                      <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                      <span>Deleting {selectedPaperIds.length} items...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-sm">delete_forever</span>
+                      <span>Delete All Selected</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>

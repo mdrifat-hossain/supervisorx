@@ -209,7 +209,7 @@ export default function MinimalDashboard() {
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newCategory, setNewCategory] = useState("");
-  const [newStatus, setNewStatus] = useState("");
+  const [newStatus, setNewStatus] = useState("Medium");
   const [selectedPalette, setSelectedPalette] = useState<
     "amber" | "emerald" | "sky" | "purple"
   >("amber");
@@ -301,7 +301,7 @@ export default function MinimalDashboard() {
         title: newTitle.trim(),
         description: newDesc.trim() || "No details provided.",
         category: newCategory.trim() || cfg.defaultCategory,
-        status: newStatus.trim() || cfg.defaultStatus,
+        status: newStatus || "Medium",
         color_type: selectedPalette,
         is_pinned: isPinnedNew,
       };
@@ -319,7 +319,7 @@ export default function MinimalDashboard() {
           setNewTitle("");
           setNewDesc("");
           setNewCategory("");
-          setNewStatus("");
+          setNewStatus("Medium");
           setIsPinnedNew(false);
         }
       }
@@ -335,7 +335,13 @@ export default function MinimalDashboard() {
     setEditTitle(note.title);
     setEditDesc(note.description);
     setEditCategory(note.category);
-    setEditStatus(note.status);
+    let s = note.status || "Medium";
+    if (!["High", "Medium", "Low"].includes(s)) {
+      if (s.toLowerCase().includes("high")) s = "High";
+      else if (s.toLowerCase().includes("low")) s = "Low";
+      else s = "Medium";
+    }
+    setEditStatus(s);
   };
 
   const handleSaveEdit = async (noteId: string) => {
@@ -678,13 +684,15 @@ export default function MinimalDashboard() {
                               placeholder="Category..."
                               className="w-1/2 bg-surface-container-high border border-outline-variant/30 text-on-surface font-code-sm text-[10px] px-1.5 py-0.5 rounded focus:outline-none"
                             />
-                            <input
-                              type="text"
-                              value={editStatus}
+                            <select
+                              value={["High", "Medium", "Low"].includes(editStatus) ? editStatus : "Medium"}
                               onChange={(e) => setEditStatus(e.target.value)}
-                              placeholder="Status..."
-                              className="w-1/2 bg-surface-container-high border border-outline-variant/30 text-on-surface font-code-sm text-[10px] px-1.5 py-0.5 rounded focus:outline-none"
-                            />
+                              className="w-1/2 bg-surface-container-high border border-outline-variant/30 text-on-surface font-code-sm text-[10px] px-1.5 py-0.5 rounded focus:outline-none cursor-pointer"
+                            >
+                              <option value="High" className="bg-surface-container-high text-on-surface">High</option>
+                              <option value="Medium" className="bg-surface-container-high text-on-surface">Medium</option>
+                              <option value="Low" className="bg-surface-container-high text-on-surface">Low</option>
+                            </select>
                           </div>
                           <div className="flex items-center justify-end gap-1 pt-1">
                             <button
@@ -774,8 +782,16 @@ export default function MinimalDashboard() {
                           </div>
                           <div className="mt-md pt-xs border-t border-outline-variant/10 flex items-center justify-between font-code-sm text-[10px] text-on-surface-variant">
                             <span>{formatNoteDate(note.created_at, isMounted)}</span>
-                            <span className={`${cfg.footerRightColor} font-medium`}>
-                              {note.status || cfg.defaultStatus}
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase ${
+                                (note.status || "").toLowerCase().includes("high")
+                                  ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                                  : (note.status || "").toLowerCase().includes("low")
+                                  ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                  : "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                              }`}
+                            >
+                              {note.status || "Medium"}
                             </span>
                           </div>
                         </>
@@ -813,13 +829,27 @@ export default function MinimalDashboard() {
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
                 />
-                <input
-                  type="text"
-                  placeholder="Status (e.g. High Priority)..."
-                  className="bg-surface-container-high border border-outline-variant/30 text-on-surface font-body-md text-[12px] px-sm py-1.5 rounded-lg w-full md:w-36 focus:ring-1 focus:ring-primary focus:outline-none placeholder:text-on-surface-variant/50"
-                  value={newStatus}
-                  onChange={(e) => setNewStatus(e.target.value)}
-                />
+                <div className="relative w-full md:w-36">
+                  <select
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value)}
+                    className="w-full bg-surface-container-high border border-outline-variant/30 text-on-surface font-body-md text-[12px] px-sm py-1.5 rounded-lg focus:ring-1 focus:ring-primary focus:outline-none appearance-none cursor-pointer pr-7"
+                    title="Select priority status"
+                  >
+                    <option value="High" className="bg-surface-container-high text-on-surface">
+                      High
+                    </option>
+                    <option value="Medium" className="bg-surface-container-high text-on-surface">
+                      Medium
+                    </option>
+                    <option value="Low" className="bg-surface-container-high text-on-surface">
+                      Low
+                    </option>
+                  </select>
+                  <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-[16px] pointer-events-none">
+                    expand_more
+                  </span>
+                </div>
               </div>
 
               <div className="flex items-center justify-between md:justify-end gap-sm flex-shrink-0">

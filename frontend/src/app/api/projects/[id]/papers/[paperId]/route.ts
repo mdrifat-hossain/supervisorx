@@ -71,13 +71,50 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
     }
 
-    // Direct deletion from PostgreSQL with pgvector cleanup
+    const { removePrivateObject } = await import("@/lib/supabase-storage");
+
+    // Fetch storage info before deletion
+    const selectRes = await pool.query(
+      `SELECT id, paper_id, storage_bucket, storage_path, primary_category 
+       FROM project_papers 
+       WHERE project_id = $1 AND (paper_id = $2 OR id = $2)`,
+      [id, paperId]
+    );
+
+    for (const row of selectRes.rows) {
+      if (row.storage_bucket && row.storage_path) {
+        // Only delete file from Supabase Storage if no other project is using this same file
+        const otherRefCheck = await pool.query(
+          "SELECT COUNT(*) AS count FROM project_papers WHERE storage_path = $1 AND project_id != $2",
+          [row.storage_path, id]
+        );
+        const isReferencedElsewhere = Number(otherRefCheck.rows[0]?.count || 0) > 0;
+
+        if (!isReferencedElsewhere) {
+          try {
+            await removePrivateObject(row.storage_bucket, row.storage_path);
+            if (row.primary_category === "Generated Report" && row.storage_path.endsWith(".pdf")) {
+              const docxPath = row.storage_path.replace(/\.pdf$/i, ".docx");
+              await removePrivateObject(row.storage_bucket, docxPath).catch(() => {});
+            }
+          } catch (storageErr) {
+            console.warn("Failed to remove object from Supabase Storage:", storageErr);
+          }
+        }
+      }
+    }
+
+    // Direct deletion from PostgreSQL with full cascade cleanup of analyzed information
     await pool.query("DELETE FROM paper_vectors WHERE project_id = $1 AND (paper_id = $2 OR id = $2)", [id, paperId]);
     await pool.query("DELETE FROM paper_text_chunks WHERE project_id = $1 AND (paper_id = $2 OR id = $2)", [id, paperId]);
     await pool.query("DELETE FROM paper_visual_items WHERE project_id = $1 AND (paper_id = $2 OR id = $2)", [id, paperId]);
+    await pool.query("DELETE FROM paper_processing_jobs WHERE project_id = $1 AND (paper_id = $2 OR id = $2)", [id, paperId]);
     await pool.query("DELETE FROM project_papers WHERE project_id = $1 AND (paper_id = $2 OR id = $2)", [id, paperId]);
     await pool.query(
-      "UPDATE projects SET papers_count = (SELECT COUNT(*) FROM project_papers WHERE project_id = $1), updated_at = NOW() WHERE id = $1",
+      `UPDATE projects 
+       SET papers_count = (SELECT COUNT(*) FROM project_papers WHERE project_id = $1 AND (primary_category IS NULL OR primary_category != 'Generated Report')), 
+           updated_at = NOW() 
+       WHERE id = $1`,
       [id]
     );
 

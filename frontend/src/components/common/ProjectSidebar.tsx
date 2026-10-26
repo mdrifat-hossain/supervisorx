@@ -12,7 +12,7 @@ interface ProjectSidebarProps {
 }
 
 export default function ProjectSidebar({
-  projectId = "cognitive-mapper",
+  projectId,
   projectName,
   activeTab,
 }: ProjectSidebarProps) {
@@ -28,7 +28,8 @@ export default function ProjectSidebar({
       ? "library"
       : "dashboard");
 
-  const effectiveProjectId = projectId || "cognitive-mapper";
+  const pathProjectId = pathname?.startsWith("/projects/") ? pathname.split("/")[2] : undefined;
+  const effectiveProjectId = projectId || pathProjectId || "cognitive-mapper";
   const [currentProjectTitle, setCurrentProjectTitle] = useState(
     projectName || (effectiveProjectId === "cognitive-mapper" ? "Cognitive Mapper v4" : "Project Workspace")
   );
@@ -194,7 +195,7 @@ export default function ProjectSidebar({
             <span className="font-body-md text-body-md">Upload &amp; Analysis</span>
           </Link>
 
-          {/* Item 4: Paper Library */}
+          {/* Item 4: All Documents */}
           <Link
             href={`/projects/${effectiveProjectId}/library`}
             className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 ${
@@ -211,12 +212,7 @@ export default function ProjectSidebar({
             >
               library_books
             </span>
-            <span className="font-body-md text-body-md">Paper Library</span>
-            {papersCount !== null && (
-              <span className="ml-auto font-label-md text-code-sm bg-surface-container-high px-1.5 py-0.2 rounded text-primary font-semibold">
-                {papersCount}
-              </span>
-            )}
+            <span className="font-body-md text-body-md">All Documents</span>
           </Link>
 
           {/* Item 5: Teammates & Settings (Disabled for now, will add dedicated design page later) */}

@@ -1,10 +1,11 @@
 import { Suspense } from "react";
 import ProjectPaperLibrary from "@/components/library/ProjectPaperLibrary";
+import ProjectLoadingSkeleton from "@/components/common/ProjectLoadingSkeleton";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Paper Library | SupervisorX AI Research",
-  description: "Explore, search, sort, and access downloaded research papers for your project in SupervisorX.",
+  title: "All Documents | SupervisorX AI Research",
+  description: "Explore, search, sort, and access downloaded research papers and AI synthesis reports for your project in SupervisorX.",
 };
 
 export function generateStaticParams() {
@@ -17,9 +18,10 @@ export default async function ProjectPaperLibraryPage({
   params: Promise<{ id: string }>;
 }) {
   const resolvedParams = await params;
+  const projectId = resolvedParams.id || "nlp-related-research-work-xxyjo";
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background" />}>
-      <ProjectPaperLibrary projectId={resolvedParams.id || "nlp-related-research-work-xxyjo"} />
+    <Suspense fallback={<ProjectLoadingSkeleton projectId={projectId} />}>
+      <ProjectPaperLibrary projectId={projectId} />
     </Suspense>
   );
 }
