@@ -293,7 +293,7 @@ export default function ProjectResearchChatbot({
   const [isSearching, setIsSearching] = useState(false);
   const [searchStage, setSearchStage] = useState(0);
 
-  // Cycle through live progress stages every 2.8s while searching
+  // Cycle through live progress stages every 2.6s while searching
   useEffect(() => {
     if (!isSearching) {
       setSearchStage(0);
@@ -301,12 +301,13 @@ export default function ProjectResearchChatbot({
     }
     const interval = setInterval(() => {
       setSearchStage((prev) => (prev + 1) % 4);
-    }, 2800);
+    }, 2600);
     return () => clearInterval(interval);
   }, [isSearching]);
 
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [synthesizingStage, setSynthesizingStage] = useState(0);
+  const [activeThinkingQuery, setActiveThinkingQuery] = useState("");
 
   // Cycle through live QA progress stages every 2.4s while synthesizing
   useEffect(() => {
@@ -326,19 +327,19 @@ export default function ProjectResearchChatbot({
     return [
       {
         title: "Formulating targeted academic search queries...",
-        subtitle: `Extracting core scientific problem statements, methods, and ${activeText} query syntax.`,
-        icon: "psychology",
+        subtitle: `Extracting core scientific problem statements, keywords, and ${activeText} query syntax.`,
+        icon: "radar",
         badge: "Stage 1/4: Query Formulation",
       },
       {
-        title: `Retrieving candidate literature from ${activeText}...`,
-        subtitle: `Querying active repository batches (${activeText}) to collect candidate literature.`,
-        icon: "manage_search",
+        title: `Scanning live preprint repositories from ${activeText}...`,
+        subtitle: `Querying active repository nodes (${activeText}) to collect candidate research preprints.`,
+        icon: "travel_explore",
         badge: "Stage 2/4: Candidate Discovery",
       },
       {
         title: "Reading & screening candidate abstracts with AI...",
-        subtitle: "Inspecting research questions, tasks, methodologies, and contributions in each abstract.",
+        subtitle: "Inspecting research questions, methodologies, benchmarks, and contributions in each abstract.",
         icon: "auto_stories",
         badge: "Stage 3/4: Abstract Screening",
       },
@@ -354,26 +355,26 @@ export default function ProjectResearchChatbot({
   const QA_STAGES = [
     {
       title: "Auditing analyzed paper library & routing research intent...",
-      subtitle: "Inspecting verified pgvector records and classifying query across scientific workflows.",
-      icon: "account_tree",
+      subtitle: "Inspecting verified pgvector records and analyzing query semantics across research workflows.",
+      icon: "neurology",
       badge: "Stage 1/4: Intent Routing & Audit",
     },
     {
       title: "Generating 2048-D semantic vector query embedding...",
-      subtitle: "Formulating dense query vector via remote GPU using nvidia/nemotron-3-embed-1b.",
-      icon: "dataset",
+      subtitle: "Formulating dense neural vector via remote GPU embedding model (nvidia/nemotron-3-embed-1b).",
+      icon: "schema",
       badge: "Stage 2/4: Vector Query Formulation",
     },
     {
       title: "Retrieving grounded evidence from Supabase pgvector...",
       subtitle: "Performing cosine distance ranking across paper text chunks, sections, and visual items.",
-      icon: "find_in_page",
+      icon: "hub",
       badge: "Stage 3/4: Evidence Retrieval",
     },
     {
       title: "Synthesizing evidence-based answer with traceable citations...",
       subtitle: "Synthesizing findings across papers and anchoring claims to physical PDF pages and section headings.",
-      icon: "fact_check",
+      icon: "psychology",
       badge: "Stage 4/4: Grounded Synthesis & Citations",
     },
   ];
@@ -710,7 +711,7 @@ export default function ProjectResearchChatbot({
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const text = inputMessage.trim();
-    if (!text || isSearching) return;
+    if (!text || isSearching || isSynthesizing) return;
 
     // Ensure an active session exists in PostgreSQL
     let currentSessionId = activeSessionId;
@@ -869,21 +870,44 @@ export default function ProjectResearchChatbot({
       }
     }
 
-    // Determine initial visual progress state
-    const lowerText = text.toLowerCase();
-    const isSearchGuess =
-      lowerText.startsWith("find") ||
-      lowerText.startsWith("search") ||
-      lowerText.startsWith("look for") ||
-      lowerText.startsWith("bring") ||
-      lowerText.includes("papers about") ||
-      lowerText.includes("preprints about") ||
-      lowerText.includes("find papers");
+    // Determine initial visual progress state with high-precision intent classification
+    const lowerText = text.toLowerCase().trim();
 
-    if (isSearchGuess) {
+    // Check if query is primarily a question or analytical synthesis prompt
+    const isExplicitQA =
+      /^(what|why|how|who|when|where|which|explain|summarize|compare|analyze|evaluate|describe|clarify|detail|elaborate)\b/i.test(lowerText) &&
+      !/^(can you|could you|please)\s+(find|search|look for|get|bring|fetch|discover|retrieve|recommend|list)/i.test(lowerText);
+
+    // Check if query is asking to discover, search, or fetch candidate papers/literature
+    const isSearchIntent =
+      !isExplicitQA && (
+        lowerText.startsWith("find") ||
+        lowerText.startsWith("search") ||
+        lowerText.startsWith("look for") ||
+        lowerText.startsWith("bring") ||
+        lowerText.startsWith("get") ||
+        lowerText.startsWith("fetch") ||
+        lowerText.startsWith("discover") ||
+        lowerText.startsWith("retrieve") ||
+        lowerText.startsWith("list") ||
+        lowerText.startsWith("show me") ||
+        lowerText.startsWith("give me") ||
+        lowerText.startsWith("recommend") ||
+        /^(can you|could you|please|i want to|i need to|help me)\s+(find|search|look for|get|bring|fetch|discover|retrieve|recommend|list)/i.test(lowerText) ||
+        /(find|search|look for|retrieve|fetch|bring|get|show|recommend|list|discover|give me).*(paper|preprint|study|studies|literature|article|publication|arxiv)/i.test(lowerText) ||
+        /(paper|preprint|literature|article|publication|study|studies)\s+(on|about|for|regarding|related to|in)/i.test(lowerText) ||
+        /(arxiv|openalex|biorxiv|medrxiv)/i.test(lowerText) ||
+        /(recent|latest|new|top|relevant)\s+(papers|research|publications|preprints|studies)/i.test(lowerText)
+      );
+
+    setActiveThinkingQuery(text);
+
+    if (isSearchIntent) {
       setIsSearching(true);
+      setIsSynthesizing(false);
     } else {
       setIsSynthesizing(true);
+      setIsSearching(false);
     }
 
     try {
@@ -1099,6 +1123,7 @@ export default function ProjectResearchChatbot({
     } finally {
       setIsSearching(false);
       setIsSynthesizing(false);
+      setActiveThinkingQuery("");
     }
   };
 
@@ -1829,103 +1854,209 @@ export default function ProjectResearchChatbot({
                 );
               }))}
 
-              {/* Dynamic Real-time Searching & Abstract Screening Indicator (Online Literature Discovery) */}
+              {/* Dynamic Real-time Searching & Abstract Screening Indicator (Online Literature Discovery / Radar) */}
               {isSearching && (
                 <div className="flex items-start gap-3 max-w-4xl mr-auto animate-fadeIn">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
-                    <span className="material-symbols-outlined text-[18px] animate-spin">
-                      progress_activity
+                  {/* Distinct Emerald Radar Avatar with concentric pulsing rings & rotating sweep beam */}
+                  <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500/25 to-teal-500/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.25)] overflow-hidden">
+                    <span className="absolute inset-0 rounded-xl border border-emerald-400/40 animate-pulse-ring pointer-events-none"></span>
+                    <span className="absolute inset-0 rounded-xl border-t-2 border-r border-emerald-400 animate-radar-sweep pointer-events-none opacity-80"></span>
+                    <span className="material-symbols-outlined text-[20px] text-emerald-300 relative z-10">
+                      radar
                     </span>
                   </div>
-                  <div className="bg-surface-container-low border border-primary/30 rounded-2xl rounded-tl-none p-4 shadow-md text-on-surface flex-1 max-w-xl">
-                    <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-outline-variant/20">
-                      <span className="text-[11px] font-code-sm font-bold uppercase tracking-wider text-primary px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-[14px]">
+
+                  {/* Emerald Radar Card */}
+                  <div className="bg-gradient-to-br from-emerald-950/40 via-surface-container-low to-teal-950/20 border border-emerald-500/40 rounded-2xl rounded-tl-none p-4.5 shadow-[0_8px_32px_rgba(16,185,129,0.14)] text-on-surface flex-1 max-w-xl relative overflow-hidden backdrop-blur-md">
+                    {/* Top Accent Gradient Bar */}
+                    <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500/0 via-emerald-400 to-teal-400/0" />
+
+                    {/* Top Header Badge & Live Scanner Status */}
+                    <div className="flex items-center justify-between gap-2 mb-2 pb-2.5 border-b border-emerald-500/20">
+                      <span className="text-[11px] font-code-sm font-bold uppercase tracking-wider text-emerald-300 px-3 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
+                        <span className="material-symbols-outlined text-[14px] text-emerald-400">
                           {SEARCH_STAGES[searchStage].icon}
                         </span>
                         {SEARCH_STAGES[searchStage].badge}
                       </span>
-                      <span className="text-code-sm text-outline text-[11px] flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                        Preprint Discovery
+                      <span className="text-code-sm text-emerald-400/90 text-[11px] flex items-center gap-1.5 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-800/40">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                        </span>
+                        Literature Radar
                       </span>
                     </div>
 
-                    <p className="font-semibold text-body-md text-on-surface flex items-center gap-2">
-                      <span className="material-symbols-outlined text-primary text-[18px] animate-spin shrink-0">
+                    {/* Active Inquiry Pill */}
+                    {activeThinkingQuery && (
+                      <div className="mb-2.5 px-3 py-1.5 rounded-lg bg-emerald-950/50 border border-emerald-500/25 text-xs text-emerald-200/90 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-emerald-400 text-[15px] shrink-0">
+                          travel_explore
+                        </span>
+                        <span className="truncate">
+                          Scanning: <span className="font-semibold text-emerald-100">&ldquo;{activeThinkingQuery}&rdquo;</span>
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Stage Title with spinning sync */}
+                    <p className="font-semibold text-body-md text-emerald-100 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-emerald-400 text-[18px] animate-spin shrink-0">
                         sync
                       </span>
                       <span>{SEARCH_STAGES[searchStage].title}</span>
                     </p>
-                    <p className="text-xs text-on-surface-variant mt-1 pl-6.5 leading-relaxed">
+                    <p className="text-xs text-emerald-200/70 mt-1 pl-6.5 leading-relaxed">
                       {SEARCH_STAGES[searchStage].subtitle}
                     </p>
 
+                    {/* Active Repository Scanning Telemetry Bar */}
+                    <div className="mt-3 pl-6.5">
+                      <div className="flex items-center gap-2 flex-wrap mb-2">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-600/40 text-emerald-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                          arXiv: cs.AI / cs.CV / stat.ML
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-600/40 text-emerald-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse"></span>
+                          OpenAlex DOI Graph
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-600/40 text-emerald-300">
+                          Relevance: &ge;7/10
+                        </span>
+                      </div>
+
+                      {/* Moving Laser Beam Scanner */}
+                      <div className="relative h-1.5 w-full bg-emerald-950/80 border border-emerald-800/30 rounded-full overflow-hidden">
+                        <div className="absolute inset-y-0 w-2/5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-laser-scan rounded-full"></div>
+                      </div>
+                    </div>
+
                     {/* Progress Step Dots */}
-                    <div className="flex items-center gap-1.5 mt-3 pl-6.5">
+                    <div className="flex items-center gap-2 mt-3 pl-6.5">
                       {[0, 1, 2, 3].map((step) => (
                         <div
                           key={step}
                           className={`h-1.5 rounded-full transition-all duration-500 ${
                             step === searchStage
-                              ? "w-7 bg-primary"
+                              ? "w-8 bg-emerald-400 shadow-[0_0_8px_#34d399]"
                               : step < searchStage
-                              ? "w-2.5 bg-primary/50"
-                              : "w-2.5 bg-surface-container-high"
+                              ? "w-3 bg-emerald-600"
+                              : "w-2.5 bg-surface-container-high/80"
                           }`}
                         />
                       ))}
+                      <span className="text-[10px] font-code-sm text-emerald-300/80 ml-auto">
+                        Stage {searchStage + 1} of 4
+                      </span>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Distinct Real-time Grounded Q&A / Synthesis Progress Indicator */}
+              {/* Distinct Real-time Grounded Q&A / Synthesis Progress Indicator (Neural Brain Cognition) */}
               {isSynthesizing && (
                 <div className="flex items-start gap-3 max-w-4xl mr-auto animate-fadeIn">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
-                    <span className="material-symbols-outlined text-[18px] animate-spin">
+                  {/* Distinct Violet Neural Brain Avatar with synaptic glow & brain wave ring */}
+                  <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600/30 via-purple-600/35 to-indigo-600/30 border border-purple-500/45 flex items-center justify-center text-purple-300 shrink-0 shadow-[0_0_18px_rgba(168,85,247,0.3)] animate-synaptic-glow overflow-hidden">
+                    <span className="absolute inset-0 rounded-xl border border-purple-400/40 animate-pulse-ring pointer-events-none"></span>
+                    <span className="material-symbols-outlined text-[20px] text-purple-200 relative z-10 animate-pulse">
                       psychology
                     </span>
                   </div>
-                  <div className="bg-surface-container-low border border-primary/30 rounded-2xl rounded-tl-none p-4 shadow-md text-on-surface flex-1 max-w-xl">
-                    <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-outline-variant/20">
-                      <span className="text-[11px] font-code-sm font-bold uppercase tracking-wider text-primary px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-[14px]">
+
+                  {/* Purple/Violet Neural Reasoning Card */}
+                  <div className="bg-gradient-to-br from-purple-950/40 via-surface-container-low to-indigo-950/25 border border-purple-500/40 rounded-2xl rounded-tl-none p-4.5 shadow-[0_8px_32px_rgba(168,85,247,0.18)] text-on-surface flex-1 max-w-xl relative overflow-hidden backdrop-blur-md">
+                    {/* Top Accent Gradient Bar */}
+                    <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-purple-500/0 via-purple-400 to-indigo-400/0" />
+
+                    {/* Top Header Badge & Live Neural Status */}
+                    <div className="flex items-center justify-between gap-2 mb-2 pb-2.5 border-b border-purple-500/20">
+                      <span className="text-[11px] font-code-sm font-bold uppercase tracking-wider text-purple-300 px-3 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 flex items-center gap-1.5 shadow-sm">
+                        <span className="material-symbols-outlined text-[14px] text-purple-400">
                           {QA_STAGES[synthesizingStage].icon}
                         </span>
                         {QA_STAGES[synthesizingStage].badge}
                       </span>
-                      <span className="text-code-sm text-outline text-[11px] flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
-                        Grounded Synthesis
+                      <span className="text-code-sm text-purple-400/90 text-[11px] flex items-center gap-1.5 bg-purple-950/60 px-2.5 py-0.5 rounded-full border border-purple-800/40">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-400"></span>
+                        </span>
+                        Neural Reasoning
                       </span>
                     </div>
 
-                    <p className="font-semibold text-body-md text-on-surface flex items-center gap-2">
-                      <span className="material-symbols-outlined text-primary text-[18px] animate-spin shrink-0">
+                    {/* Active Question Inquiry Pill */}
+                    {activeThinkingQuery && (
+                      <div className="mb-2.5 px-3 py-1.5 rounded-lg bg-purple-950/50 border border-purple-500/25 text-xs text-purple-200/90 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-purple-400 text-[15px] shrink-0">
+                          neurology
+                        </span>
+                        <span className="truncate">
+                          Analyzing: <span className="font-semibold text-purple-100">&ldquo;{activeThinkingQuery}&rdquo;</span>
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Stage Title with spinning autorenew */}
+                    <p className="font-semibold text-body-md text-purple-100 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-purple-400 text-[18px] animate-spin shrink-0">
                         autorenew
                       </span>
                       <span>{QA_STAGES[synthesizingStage].title}</span>
                     </p>
-                    <p className="text-xs text-on-surface-variant mt-1 pl-6.5 leading-relaxed">
+                    <p className="text-xs text-purple-200/70 mt-1 pl-6.5 leading-relaxed">
                       {QA_STAGES[synthesizingStage].subtitle}
                     </p>
 
+                    {/* Animated Neural Waveform & Vector Telemetry */}
+                    <div className="mt-3 pl-6.5 flex items-center justify-between gap-3">
+                      {/* Live 7-Bar Neural Thinking Equalizer */}
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-950/60 rounded-lg border border-purple-800/40 shadow-inner">
+                        <span className="text-[10px] font-code-sm text-purple-300 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[13px] text-purple-400">graphic_eq</span>
+                          Cognitive Pulse
+                        </span>
+                        <div className="flex items-end gap-1 h-5 w-16 justify-center">
+                          <span className="w-1 bg-purple-400 rounded-full wave-bar-1"></span>
+                          <span className="w-1 bg-purple-300 rounded-full wave-bar-2"></span>
+                          <span className="w-1 bg-violet-400 rounded-full wave-bar-3"></span>
+                          <span className="w-1 bg-indigo-300 rounded-full wave-bar-4"></span>
+                          <span className="w-1 bg-purple-400 rounded-full wave-bar-5"></span>
+                          <span className="w-1 bg-violet-300 rounded-full wave-bar-6"></span>
+                          <span className="w-1 bg-purple-400 rounded-full wave-bar-7"></span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-purple-950/70 border border-purple-700/40 text-purple-300">
+                          2048-D Embedding
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-purple-950/70 border border-purple-700/40 text-purple-300">
+                          pgvector Cosine
+                        </span>
+                      </div>
+                    </div>
+
                     {/* Progress Step Dots */}
-                    <div className="flex items-center gap-1.5 mt-3 pl-6.5">
+                    <div className="flex items-center gap-2 mt-3 pl-6.5">
                       {[0, 1, 2, 3].map((step) => (
                         <div
                           key={step}
                           className={`h-1.5 rounded-full transition-all duration-500 ${
                             step === synthesizingStage
-                              ? "w-7 bg-primary"
+                              ? "w-8 bg-purple-400 shadow-[0_0_8px_#a855f7]"
                               : step < synthesizingStage
-                              ? "w-2.5 bg-primary/50"
-                              : "w-2.5 bg-surface-container-high"
+                              ? "w-3 bg-purple-600"
+                              : "w-2.5 bg-surface-container-high/80"
                           }`}
                         />
                       ))}
+                      <span className="text-[10px] font-code-sm text-purple-300/80 ml-auto">
+                        Stage {synthesizingStage + 1} of 4
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -2329,22 +2460,46 @@ export default function ProjectResearchChatbot({
                       </button>
                       <button
                         type="submit"
-                        className="px-4 py-1.5 rounded-lg bg-primary text-on-primary font-medium text-label-md font-label-md hover:bg-primary-fixed-dim transition-all flex items-center gap-1.5 active:scale-95 shadow-sm cursor-pointer"
+                        disabled={isSearching || isSynthesizing || !inputMessage.trim()}
+                        className={`px-4 py-1.5 rounded-lg font-medium text-label-md font-label-md transition-all flex items-center gap-1.5 shadow-sm ${
+                          isSearching || isSynthesizing || !inputMessage.trim()
+                            ? "bg-surface-container-high text-outline cursor-not-allowed opacity-60"
+                            : "bg-primary text-on-primary hover:bg-primary-fixed-dim cursor-pointer active:scale-95"
+                        }`}
                       >
-                        <span>Send</span>
-                        <span className="material-symbols-outlined text-[16px]">send</span>
+                        {isSearching ? (
+                          <>
+                            <span className="material-symbols-outlined text-[16px] animate-spin text-emerald-400">
+                              sync
+                            </span>
+                            <span className="text-emerald-300">Scanning...</span>
+                          </>
+                        ) : isSynthesizing ? (
+                          <>
+                            <span className="material-symbols-outlined text-[16px] animate-spin text-purple-400">
+                              autorenew
+                            </span>
+                            <span className="text-purple-300">Thinking...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Send</span>
+                            <span className="material-symbols-outlined text-[16px]">send</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
                 </form>
 
                 {/* Footer Compliance Microcopy */}
+                {/*
                 <div className="flex items-center justify-between text-[11px] font-code-sm text-outline px-1">
                   <span>
                     SupervisorX v4.2 Semantic Engine • Zero Hallucination Retrieval Grounded in OpenAccess Datasets
                   </span>
                   <span>Context: 12.4k / 32k tokens used</span>
-                </div>
+                </div> */}
               </div>
             </div>
           </main>

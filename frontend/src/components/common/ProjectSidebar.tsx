@@ -91,7 +91,7 @@ export default function ProjectSidebar({
             </div>
           </Link>
           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-label-md bg-surface-container-high text-primary border border-primary/20">
-            v4.2
+            v1.0
           </span>
         </div>
 

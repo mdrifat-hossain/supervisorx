@@ -37,6 +37,31 @@ export default function RootLayout({
       className={`dark ${geistSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                if (typeof window === 'undefined') return;
+                window.addEventListener('error', function(event) {
+                  var fn = event.filename || '';
+                  var msg = event.message || '';
+                  if (fn.indexOf('chrome-extension://') !== -1 || msg.indexOf('redirection') !== -1 || msg.indexOf('cently') !== -1 || msg.indexOf('location') !== -1) {
+                    event.stopImmediatePropagation();
+                    event.preventDefault();
+                    return true;
+                  }
+                }, true);
+                window.addEventListener('unhandledrejection', function(event) {
+                  var str = String(event.reason || '');
+                  if (str.indexOf('chrome-extension://') !== -1 || str.indexOf('redirection') !== -1 || str.indexOf('cently') !== -1 || str.indexOf('location') !== -1) {
+                    event.stopImmediatePropagation();
+                    event.preventDefault();
+                  }
+                }, true);
+              })();
+            `,
+          }}
+        />
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
