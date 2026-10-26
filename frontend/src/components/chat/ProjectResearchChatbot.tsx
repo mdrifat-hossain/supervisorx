@@ -5,6 +5,42 @@ import Link from "next/link";
 import ProjectSidebar from "@/components/common/ProjectSidebar";
 import FormattedResearchMarkdown from "./FormattedResearchMarkdown";
 
+type ChatTaskMode = "search" | "download" | "document" | "summary" | "comparison" | "question" | "chat";
+
+function classifyChatTask(message: string): ChatTaskMode {
+  const text = message.toLowerCase().trim();
+  const paperDownload = /\b(?:download|save)\b.{0,60}\b(?:papers?|preprints?|articles?)\b/.test(text);
+  if (paperDownload) return "download";
+
+  const outputAction = /\b(?:create|generate|make|export|save|provide|give|send|turn|convert|download)\b/.test(text);
+  const fileTarget = /\b(?:pdf|docx?|word\s+(?:doc|document|file)|file|document|report)\b/.test(text);
+  if ((outputAction && fileTarget) || /\bexport\s+(?:this|the|my|your|previous)\b/.test(text)) {
+    return "document";
+  }
+
+  const discoveryLead = /^(?:(?:can|could|would) you\s+|please\s+|i (?:want|need) to\s+|help me\s+)?(?:find|search(?:\s+for)?|look\s+for|discover|recommend|list|show(?:\s+me)?|bring\s+me|get\s+me|fetch|retrieve)\b/.test(text);
+  const discoveryTarget = /\b(?:papers?|preprints?|studies|articles|literature|publications)\b/.test(text);
+  const refersToProjectLibrary = /\b(?:analyzed|uploaded|selected|these|this paper|the paper|project library)\b/.test(text);
+  const bringRecentPapers = /^(?:give|get|bring) me\s+(?:\d+\s+)?(?:(?:recent|new|top|relevant)\s+)?papers?\b/.test(text);
+  if ((discoveryLead && discoveryTarget && !refersToProjectLibrary) || bringRecentPapers) return "search";
+
+  if (/\b(?:compare|comparison|contrast|versus|vs)\b/.test(text)) return "comparison";
+  if (/\b(?:summary|summarize|summarise|summarizing|summarising|overview|walkthrough)\b/.test(text)) return "summary";
+  if (/^(?:what|why|how|who|when|where|which|explain|describe|analyze|analyse|evaluate|does|is|are|can you explain)\b/.test(text) || text.includes("?")) {
+    return "question";
+  }
+  if (/\b(?:paper|papers|research|finding|findings|result|results|method|methods|methodology|objective|objectives)\b/.test(text)) return "question";
+  return "chat";
+}
+
+function getRequestedDocumentFormats(message: string): Array<"PDF" | "DOCX"> {
+  const text = message.toLowerCase();
+  const formats: Array<"PDF" | "DOCX"> = [];
+  if (/\bpdf\b/.test(text)) formats.push("PDF");
+  if (/\b(?:docx?|word(?:\s+(?:doc|document|file))?)\b/.test(text)) formats.push("DOCX");
+  return formats.length ? formats : ["PDF"];
+}
+
 interface Citation {
   citation_index: number;
   paper_id: string;
@@ -233,6 +269,24 @@ interface ChatMessage {
     paperIds: number[];
     titles?: string[];
   };
+  document?: {
+    id: string;
+    document_id?: string;
+    title: string;
+    document_type: string;
+    format: "pdf" | "docx" | "both";
+    formats_available: string[];
+    filename_pdf?: string;
+    filename_docx?: string;
+    file_size_bytes?: number;
+    generated_at: string;
+    scope_description?: string;
+    download_url_pdf?: string;
+    download_url_docx?: string;
+    sections_count?: number;
+    citations_count?: number;
+    sources_count?: number;
+  };
 }
 
 export default function ProjectResearchChatbot({
@@ -290,31 +344,28 @@ export default function ProjectResearchChatbot({
 
   const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
   const allSessionScreenedIds = useRef<Set<string>>(new Set());
-  const [isSearching, setIsSearching] = useState(false);
+  const [activeTaskMode, setActiveTaskMode] = useState<ChatTaskMode | null>(null);
+  const isSearching = activeTaskMode === "search";
+  const isDownloading = activeTaskMode === "download";
+  const isGeneratingDoc = activeTaskMode === "document";
+  const isSynthesizing = activeTaskMode === "summary" || activeTaskMode === "comparison" || activeTaskMode === "question" || activeTaskMode === "chat";
   const [searchStage, setSearchStage] = useState(0);
 
-  // Cycle through live progress stages every 2.6s while searching
+  // The backend does not stream internal progress, so these are rotating task-specific status cues.
   useEffect(() => {
-    if (!isSearching) {
-      setSearchStage(0);
-      return;
-    }
+    if (!isSearching && !isDownloading) return;
     const interval = setInterval(() => {
       setSearchStage((prev) => (prev + 1) % 4);
     }, 2600);
     return () => clearInterval(interval);
-  }, [isSearching]);
+  }, [isSearching, isDownloading]);
 
-  const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [synthesizingStage, setSynthesizingStage] = useState(0);
   const [activeThinkingQuery, setActiveThinkingQuery] = useState("");
 
-  // Cycle through live QA progress stages every 2.4s while synthesizing
+  // Rotate descriptive status cues while the analysis request is in flight.
   useEffect(() => {
-    if (!isSynthesizing) {
-      setSynthesizingStage(0);
-      return;
-    }
+    if (!isSynthesizing) return;
     const interval = setInterval(() => {
       setSynthesizingStage((prev) => (prev + 1) % 4);
     }, 2400);
@@ -352,32 +403,123 @@ export default function ProjectResearchChatbot({
     ];
   }, [sources]);
 
-  const QA_STAGES = [
-    {
-      title: "Auditing analyzed paper library & routing research intent...",
-      subtitle: "Inspecting verified pgvector records and analyzing query semantics across research workflows.",
-      icon: "neurology",
-      badge: "Stage 1/4: Intent Routing & Audit",
-    },
-    {
-      title: "Generating 2048-D semantic vector query embedding...",
-      subtitle: "Formulating dense neural vector via remote GPU embedding model (nvidia/nemotron-3-embed-1b).",
-      icon: "schema",
-      badge: "Stage 2/4: Vector Query Formulation",
-    },
-    {
-      title: "Retrieving grounded evidence from Supabase pgvector...",
-      subtitle: "Performing cosine distance ranking across paper text chunks, sections, and visual items.",
-      icon: "hub",
-      badge: "Stage 3/4: Evidence Retrieval",
-    },
-    {
-      title: "Synthesizing evidence-based answer with traceable citations...",
-      subtitle: "Synthesizing findings across papers and anchoring claims to physical PDF pages and section headings.",
-      icon: "psychology",
-      badge: "Stage 4/4: Grounded Synthesis & Citations",
-    },
+  const [docStage, setDocStage] = useState(0);
+
+  // Rotate document-specific status cues while a file request is in flight.
+  useEffect(() => {
+    if (!isGeneratingDoc) return;
+    const interval = setInterval(() => {
+      setDocStage((prev) => (prev + 1) % 4);
+    }, 2400);
+    return () => clearInterval(interval);
+  }, [isGeneratingDoc]);
+
+  const requestedDocumentFormats = getRequestedDocumentFormats(activeThinkingQuery);
+  const requestedDocumentFormatsLabel = requestedDocumentFormats.join(" + ");
+  const documentTaskKind = /\b(?:summary|summarize|summarise|summarizing|summarising|overview|walkthrough)\b/i.test(activeThinkingQuery)
+    ? "summary"
+    : /\b(?:compare|comparison|contrast)\b/i.test(activeThinkingQuery)
+      ? "comparison"
+      : "export";
+  const DOC_STAGES = (() => {
+    const outputLabel = requestedDocumentFormatsLabel || "requested file";
+    if (documentTaskKind === "summary") {
+      return [
+        { title: "Selecting analyzed papers for the summary...", subtitle: "Using the papers and scope named in your request.", icon: "library_books", badge: "Summary · Paper selection" },
+        { title: "Gathering evidence from each paper...", subtitle: "Collecting problem, methods, experiments, results, and limitations with page references.", icon: "manage_search", badge: "Summary · Source review" },
+        { title: "Organizing the paper-by-paper report...", subtitle: "Structuring findings and linking each claim to its cited source section.", icon: "format_list_numbered", badge: "Summary · Report structure" },
+        { title: `Preparing your ${outputLabel} summary...`, subtitle: "Finishing the requested file and its source references.", icon: "description", badge: `Output · ${outputLabel}` },
+      ];
+    }
+    if (documentTaskKind === "comparison") {
+      return [
+        { title: "Selecting papers for comparison...", subtitle: "Identifying the analyzed papers named in your request.", icon: "library_books", badge: "Comparison · Paper selection" },
+        { title: "Reviewing comparable methods and results...", subtitle: "Gathering evidence from matching sections and PDF pages.", icon: "compare_arrows", badge: "Comparison · Evidence review" },
+        { title: "Structuring the comparison and references...", subtitle: "Aligning findings while keeping each source traceable.", icon: "table_chart", badge: "Comparison · Report structure" },
+        { title: `Preparing your ${outputLabel} comparison...`, subtitle: "Finishing the requested file and its source references.", icon: "description", badge: `Output · ${outputLabel}` },
+      ];
+    }
+    return [
+      { title: "Collecting the answer and its citations...", subtitle: "Preserving the requested conversation content and its source anchors.", icon: "chat", badge: "Export · Content" },
+      { title: "Organizing the report sections...", subtitle: "Formatting headings, tables, and references for the document.", icon: "format_list_bulleted", badge: "Export · Structure" },
+      { title: `Compiling ${outputLabel}...`, subtitle: "Creating only the file format or formats requested.", icon: "description", badge: `Export · ${outputLabel}` },
+      { title: "Preparing your download...", subtitle: "Finalizing the generated document link.", icon: "download_done", badge: "Export · Ready" },
+    ];
+  })();
+
+  const QA_STAGES = (() => {
+    if (activeTaskMode === "summary") {
+      return [
+        { title: "Selecting the paper or papers to summarize...", subtitle: "Checking which analyzed papers match your requested scope.", icon: "library_books", badge: "Summary · Scope" },
+        { title: "Reviewing evidence across each paper...", subtitle: "Looking for objectives, methods, experiments, findings, and limitations.", icon: "manage_search", badge: "Summary · Evidence" },
+        { title: "Writing the structured summary...", subtitle: "Keeping each paper separate and grounding claims in the source text.", icon: "summarize", badge: "Summary · Synthesis" },
+        { title: "Adding section and page references...", subtitle: "Connecting the summary to the relevant analyzed PDF locations.", icon: "format_quote", badge: "Summary · References" },
+      ];
+    }
+    if (activeTaskMode === "comparison") {
+      return [
+        { title: "Identifying papers to compare...", subtitle: "Resolving the papers and comparison dimensions in your request.", icon: "library_books", badge: "Comparison · Scope" },
+        { title: "Reviewing matching evidence...", subtitle: "Gathering comparable methods, datasets, results, and limitations.", icon: "manage_search", badge: "Comparison · Evidence" },
+        { title: "Comparing the findings...", subtitle: "Separating each paper’s reported results and supported conclusions.", icon: "compare_arrows", badge: "Comparison · Synthesis" },
+        { title: "Adding source references...", subtitle: "Linking comparison points to paper sections and PDF pages.", icon: "format_quote", badge: "Comparison · References" },
+      ];
+    }
+    if (activeTaskMode === "chat") {
+      return [
+        { title: "Preparing a response...", subtitle: "Putting together a clear reply.", icon: "chat", badge: "Reply · In progress" },
+        { title: "Preparing a response...", subtitle: "Putting together a clear reply.", icon: "chat", badge: "Reply · In progress" },
+        { title: "Preparing a response...", subtitle: "Putting together a clear reply.", icon: "chat", badge: "Reply · In progress" },
+        { title: "Preparing a response...", subtitle: "Putting together a clear reply.", icon: "chat", badge: "Reply · In progress" },
+      ];
+    }
+    return [
+      { title: "Finding relevant sections in analyzed papers...", subtitle: "Looking for source material that addresses your question.", icon: "manage_search", badge: "Question · Find evidence" },
+      { title: "Reviewing the source passages...", subtitle: "Checking the relevant paper sections and reported details.", icon: "menu_book", badge: "Question · Review sources" },
+      { title: "Preparing an evidence-based answer...", subtitle: "Building the response from the retrieved paper content.", icon: "psychology", badge: "Question · Compose answer" },
+      { title: "Adding PDF page references...", subtitle: "Connecting supported claims to their source locations.", icon: "format_quote", badge: "Question · Cite sources" },
+    ];
+  })();
+
+  const DOWNLOAD_STAGES = [
+    { title: "Finding the requested papers in your project...", subtitle: "Checking which selected papers are ready for transfer.", icon: "library_books", badge: "Download · Locate papers" },
+    { title: "Preparing secure PDF downloads...", subtitle: "Retrieving the requested paper files from project storage.", icon: "downloading", badge: "Download · Retrieve files" },
+    { title: "Finishing paper downloads...", subtitle: "Completing the requested file transfer.", icon: "download_done", badge: "Download · Finalize" },
+    { title: "Finishing paper downloads...", subtitle: "Completing the requested file transfer.", icon: "download_done", badge: "Download · Finalize" },
   ];
+  const ACTIVE_SEARCH_STAGES = isDownloading ? DOWNLOAD_STAGES : SEARCH_STAGES;
+
+  const [exportingMsgId, setExportingMsgId] = useState<string | null>(null);
+
+  const handleExportMessage = async (msg: ChatMessage, format: "pdf" | "docx") => {
+    if (!msg.text) return;
+    const actionKey = `${msg.id}-${format}`;
+    setExportingMsgId(actionKey);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `${projectName} Research Report`,
+          text: msg.text,
+          citations: msg.citations,
+          format: format,
+          documentType: msg.intent || "research_report",
+          project_name: projectName,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const downloadUrl = format === "docx" ? data.document?.download_url_docx : data.document?.download_url_pdf;
+        if (downloadUrl) {
+          window.open(downloadUrl, "_blank");
+        }
+      }
+    } catch (err) {
+      console.error("Failed to export message document:", err);
+    } finally {
+      setExportingMsgId(null);
+    }
+  };
 
   const [projectName, setProjectName] = useState(
     initialProjectName || (projectId === "cognitive-mapper" ? "Cognitive Mapper v4" : "Project Workspace")
@@ -711,7 +853,7 @@ export default function ProjectResearchChatbot({
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const text = inputMessage.trim();
-    if (!text || isSearching || isSynthesizing) return;
+    if (!text || isSearching || isDownloading || isSynthesizing || isGeneratingDoc) return;
 
     // Ensure an active session exists in PostgreSQL
     let currentSessionId = activeSessionId;
@@ -874,41 +1016,12 @@ export default function ProjectResearchChatbot({
     const lowerText = text.toLowerCase().trim();
 
     // Check if query is primarily a question or analytical synthesis prompt
-    const isExplicitQA =
-      /^(what|why|how|who|when|where|which|explain|summarize|compare|analyze|evaluate|describe|clarify|detail|elaborate)\b/i.test(lowerText) &&
-      !/^(can you|could you|please)\s+(find|search|look for|get|bring|fetch|discover|retrieve|recommend|list)/i.test(lowerText);
-
-    // Check if query is asking to discover, search, or fetch candidate papers/literature
-    const isSearchIntent =
-      !isExplicitQA && (
-        lowerText.startsWith("find") ||
-        lowerText.startsWith("search") ||
-        lowerText.startsWith("look for") ||
-        lowerText.startsWith("bring") ||
-        lowerText.startsWith("get") ||
-        lowerText.startsWith("fetch") ||
-        lowerText.startsWith("discover") ||
-        lowerText.startsWith("retrieve") ||
-        lowerText.startsWith("list") ||
-        lowerText.startsWith("show me") ||
-        lowerText.startsWith("give me") ||
-        lowerText.startsWith("recommend") ||
-        /^(can you|could you|please|i want to|i need to|help me)\s+(find|search|look for|get|bring|fetch|discover|retrieve|recommend|list)/i.test(lowerText) ||
-        /(find|search|look for|retrieve|fetch|bring|get|show|recommend|list|discover|give me).*(paper|preprint|study|studies|literature|article|publication|arxiv)/i.test(lowerText) ||
-        /(paper|preprint|literature|article|publication|study|studies)\s+(on|about|for|regarding|related to|in)/i.test(lowerText) ||
-        /(arxiv|openalex|biorxiv|medrxiv)/i.test(lowerText) ||
-        /(recent|latest|new|top|relevant)\s+(papers|research|publications|preprints|studies)/i.test(lowerText)
-      );
-
+    const taskMode = classifyChatTask(lowerText);
     setActiveThinkingQuery(text);
-
-    if (isSearchIntent) {
-      setIsSearching(true);
-      setIsSynthesizing(false);
-    } else {
-      setIsSynthesizing(true);
-      setIsSearching(false);
-    }
+    setActiveTaskMode(taskMode);
+    setSearchStage(0);
+    setSynthesizingStage(0);
+    setDocStage(0);
 
     try {
       // Collect all previously seen, screened, and downloaded paper IDs across this conversation
@@ -937,6 +1050,8 @@ export default function ProjectResearchChatbot({
           history: messages.slice(-5).map((m) => ({
             sender: m.sender,
             text: m.text || (m.isPapersResponse ? "Found papers" : ""),
+            citations: m.citations || [],
+            intent: m.intent,
           })),
           limit: effectiveLimit,
           startYear: effectiveStartYear,
@@ -1060,6 +1175,34 @@ export default function ProjectResearchChatbot({
             intent: aiMsg.intent,
           }),
         }).catch((e) => console.error("Error saving AI QA response to DB:", e));
+      } else if (data.intent === "generate_document" || data.document) {
+        const aiMsg: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          sender: "ai",
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          isPapersResponse: false,
+          text: data.answer || "I have generated your requested research document.",
+          citations: data.citations || [],
+          intent: "generate_document",
+          document: data.document,
+        };
+
+        setMessages((prev) => [...prev, aiMsg]);
+
+        fetch(`/api/projects/${projectId}/chat/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: aiMsg.id,
+            sessionId: currentSessionId,
+            sender: "ai",
+            time: aiMsg.time,
+            isPapersResponse: false,
+            text: aiMsg.text,
+            citations: aiMsg.citations,
+            intent: "generate_document",
+          }),
+        }).catch((e) => console.error("Error saving document response to DB:", e));
       } else {
         // Conversational or fallback response
         const fallbackMsg: ChatMessage = {
@@ -1121,8 +1264,7 @@ export default function ProjectResearchChatbot({
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
-      setIsSearching(false);
-      setIsSynthesizing(false);
+      setActiveTaskMode(null);
       setActiveThinkingQuery("");
     }
   };
@@ -1753,7 +1895,9 @@ export default function ProjectResearchChatbot({
                   >
                     <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-tertiary flex items-center justify-center text-on-primary text-xs shrink-0 shadow-md">
                       <span className="material-symbols-outlined text-[18px]">
-                        {msg.intent === "compare_papers"
+                        {msg.intent === "generate_document" || msg.document
+                          ? "article"
+                          : msg.intent === "compare_papers"
                           ? "balance"
                           : msg.intent === "summarize_papers"
                           ? "summarize"
@@ -1764,28 +1908,37 @@ export default function ProjectResearchChatbot({
                     </div>
 
                     <div className="flex-1 space-y-3 min-w-0">
-                      {/* Intent pill badge if QA / Compare / Summary */}
+                      {/* Intent pill badge if QA / Compare / Summary / Document */}
                       {msg.intent &&
                         (msg.intent === "paper_qa" ||
                           msg.intent === "compare_papers" ||
-                          msg.intent === "summarize_papers") && (
+                          msg.intent === "summarize_papers" ||
+                          msg.intent === "generate_document") && (
                           <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-code-sm font-semibold border bg-primary/10 border-primary/30 text-primary">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-code-sm font-semibold border ${
+                              msg.intent === "generate_document"
+                                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                                : "bg-primary/10 border-primary/30 text-primary"
+                            }`}>
                               <span className="material-symbols-outlined text-[13px]">
-                                {msg.intent === "compare_papers"
+                                {msg.intent === "generate_document"
+                                  ? "description"
+                                  : msg.intent === "compare_papers"
                                   ? "compare_arrows"
                                   : msg.intent === "summarize_papers"
                                   ? "auto_stories"
                                   : "verified"}
                               </span>
-                              {msg.intent === "compare_papers"
+                              {msg.intent === "generate_document"
+                                ? "Typeset Academic Document"
+                                : msg.intent === "compare_papers"
                                 ? "Comparative Research Synthesis"
                                 : msg.intent === "summarize_papers"
                                 ? "Structured Literature Summary"
                                 : "Evidence-Grounded Answer"}
                             </span>
                             <span className="text-code-sm text-outline text-[11px]">
-                              Grounded on Analyzed PDFs
+                              {msg.intent === "generate_document" ? "DOCX / PDF Artifact" : "Grounded on Analyzed PDFs"}
                             </span>
                           </div>
                         )}
@@ -1794,6 +1947,67 @@ export default function ProjectResearchChatbot({
                       <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl rounded-tl-none p-4 md:p-5 shadow-sm text-body-md text-on-surface">
                         <FormattedResearchMarkdown content={msg.text || ""} />
                       </div>
+
+                      {/* Generated Document Card if present */}
+                      {msg.document && (
+                        <div className="p-4 rounded-xl bg-gradient-to-br from-surface-container-high/90 via-surface-container to-amber-950/20 border border-amber-500/30 shadow-md">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                                <span className="material-symbols-outlined text-[24px]">
+                                  {msg.document.format.toLowerCase() === "docx" ? "description" : "picture_as_pdf"}
+                                </span>
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-semibold text-sm text-on-surface truncate">
+                                  {msg.document.title || "Research Document"}
+                                </h4>
+                                <div className="flex items-center gap-2 mt-1 text-[11px] font-code-sm text-outline flex-wrap">
+                                  <span className="px-1.5 py-0.5 rounded bg-surface-container-highest border border-outline-variant/30 text-on-surface-variant font-medium">
+                                    {msg.document.document_type || "Research Report"}
+                                  </span>
+                                  {msg.document.sections_count ? (
+                                    <span>{msg.document.sections_count} sections</span>
+                                  ) : null}
+                                  {msg.document.sources_count ? (
+                                    <span>• {msg.document.sources_count} papers cited</span>
+                                  ) : null}
+                                  {msg.document.file_size_bytes ? (
+                                    <span>• {(msg.document.file_size_bytes / 1024).toFixed(1)} KB</span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              {(msg.document.formats_available || (msg.document.format === "both" ? ["pdf", "docx"] : [msg.document.format])).includes("pdf") && (
+                              <a
+                                href={msg.document.download_url_pdf || `/api/projects/${projectId}/documents/${msg.document.id || msg.document.document_id}/download?format=pdf`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 transition-all text-xs font-medium cursor-pointer shadow-sm active:scale-95"
+                                title="Download PDF document"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
+                                <span>PDF</span>
+                              </a>
+                              )}
+                              {(msg.document.formats_available || (msg.document.format === "both" ? ["pdf", "docx"] : [msg.document.format])).includes("docx") && (
+                              <a
+                                href={msg.document.download_url_docx || `/api/projects/${projectId}/documents/${msg.document.id || msg.document.document_id}/download?format=docx`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 transition-all text-xs font-medium cursor-pointer shadow-sm active:scale-95"
+                                title="Download Word (.docx) document"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">description</span>
+                                <span>DOCX</span>
+                              </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Collapsible references grouped by canonical paper ID */}
                       {referencePaperCount > 0 && (
@@ -1855,36 +2069,36 @@ export default function ProjectResearchChatbot({
               }))}
 
               {/* Dynamic Real-time Searching & Abstract Screening Indicator (Online Literature Discovery / Radar) */}
-              {isSearching && (
+              {(isSearching || isDownloading) && (
                 <div className="flex items-start gap-3 max-w-4xl mr-auto animate-fadeIn">
                   {/* Distinct Emerald Radar Avatar with concentric pulsing rings & rotating sweep beam */}
-                  <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500/25 to-teal-500/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.25)] overflow-hidden">
-                    <span className="absolute inset-0 rounded-xl border border-emerald-400/40 animate-pulse-ring pointer-events-none"></span>
-                    <span className="absolute inset-0 rounded-xl border-t-2 border-r border-emerald-400 animate-radar-sweep pointer-events-none opacity-80"></span>
-                    <span className="material-symbols-outlined text-[20px] text-emerald-300 relative z-10">
-                      radar
+                  <div className={`relative w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 overflow-hidden ${isDownloading ? "bg-gradient-to-br from-sky-500/25 to-blue-500/30 border-sky-500/40 text-sky-400 shadow-[0_0_15px_rgba(14,165,233,0.25)]" : "bg-gradient-to-br from-emerald-500/25 to-teal-500/30 border-emerald-500/40 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.25)]"}`}>
+                    <span className={`absolute inset-0 rounded-xl border animate-pulse-ring pointer-events-none ${isDownloading ? "border-sky-400/40" : "border-emerald-400/40"}`}></span>
+                    {!isDownloading && <span className="absolute inset-0 rounded-xl border-t-2 border-r border-emerald-400 animate-radar-sweep pointer-events-none opacity-80"></span>}
+                    <span className={`material-symbols-outlined text-[20px] relative z-10 ${isDownloading ? "text-sky-300" : "text-emerald-300"}`}>
+                      {isDownloading ? "download" : "radar"}
                     </span>
                   </div>
 
                   {/* Emerald Radar Card */}
-                  <div className="bg-gradient-to-br from-emerald-950/40 via-surface-container-low to-teal-950/20 border border-emerald-500/40 rounded-2xl rounded-tl-none p-4.5 shadow-[0_8px_32px_rgba(16,185,129,0.14)] text-on-surface flex-1 max-w-xl relative overflow-hidden backdrop-blur-md">
+                  <div className={`border rounded-2xl rounded-tl-none p-4.5 text-on-surface flex-1 max-w-xl relative overflow-hidden backdrop-blur-md ${isDownloading ? "bg-gradient-to-br from-sky-950/40 via-surface-container-low to-blue-950/20 border-sky-500/40 shadow-[0_8px_32px_rgba(14,165,233,0.14)]" : "bg-gradient-to-br from-emerald-950/40 via-surface-container-low to-teal-950/20 border-emerald-500/40 shadow-[0_8px_32px_rgba(16,185,129,0.14)]"}`}>
                     {/* Top Accent Gradient Bar */}
-                    <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500/0 via-emerald-400 to-teal-400/0" />
+                    <div className={`absolute top-0 left-0 right-0 h-[2px] ${isDownloading ? "bg-gradient-to-r from-sky-500/0 via-sky-400 to-blue-400/0" : "bg-gradient-to-r from-emerald-500/0 via-emerald-400 to-teal-400/0"}`} />
 
                     {/* Top Header Badge & Live Scanner Status */}
                     <div className="flex items-center justify-between gap-2 mb-2 pb-2.5 border-b border-emerald-500/20">
-                      <span className="text-[11px] font-code-sm font-bold uppercase tracking-wider text-emerald-300 px-3 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
-                        <span className="material-symbols-outlined text-[14px] text-emerald-400">
-                          {SEARCH_STAGES[searchStage].icon}
+                      <span className={`text-[11px] font-code-sm font-bold uppercase tracking-wider px-3 py-0.5 rounded-full border flex items-center gap-1.5 shadow-sm ${isDownloading ? "text-sky-300 bg-sky-500/15 border-sky-500/30" : "text-emerald-300 bg-emerald-500/15 border-emerald-500/30"}`}>
+                        <span className={`material-symbols-outlined text-[14px] ${isDownloading ? "text-sky-400" : "text-emerald-400"}`}>
+                          {ACTIVE_SEARCH_STAGES[searchStage].icon}
                         </span>
-                        {SEARCH_STAGES[searchStage].badge}
+                        {ACTIVE_SEARCH_STAGES[searchStage].badge}
                       </span>
-                      <span className="text-code-sm text-emerald-400/90 text-[11px] flex items-center gap-1.5 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-800/40">
+                      <span className={`text-code-sm text-[11px] flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border ${isDownloading ? "text-sky-400/90 bg-sky-950/60 border-sky-800/40" : "text-emerald-400/90 bg-emerald-950/60 border-emerald-800/40"}`}>
                         <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isDownloading ? "bg-sky-400" : "bg-emerald-400"}`}></span>
+                          <span className={`relative inline-flex rounded-full h-2 w-2 ${isDownloading ? "bg-sky-400" : "bg-emerald-400"}`}></span>
                         </span>
-                        Literature Radar
+                        {isDownloading ? "Paper transfer" : "Literature search"}
                       </span>
                     </div>
 
@@ -1892,44 +2106,44 @@ export default function ProjectResearchChatbot({
                     {activeThinkingQuery && (
                       <div className="mb-2.5 px-3 py-1.5 rounded-lg bg-emerald-950/50 border border-emerald-500/25 text-xs text-emerald-200/90 flex items-center gap-2">
                         <span className="material-symbols-outlined text-emerald-400 text-[15px] shrink-0">
-                          travel_explore
+                          {isDownloading ? "download" : "travel_explore"}
                         </span>
                         <span className="truncate">
-                          Scanning: <span className="font-semibold text-emerald-100">&ldquo;{activeThinkingQuery}&rdquo;</span>
+                          {isDownloading ? "Preparing:" : "Searching:"} <span className="font-semibold text-emerald-100">&ldquo;{activeThinkingQuery}&rdquo;</span>
                         </span>
                       </div>
                     )}
 
                     {/* Stage Title with spinning sync */}
-                    <p className="font-semibold text-body-md text-emerald-100 flex items-center gap-2">
-                      <span className="material-symbols-outlined text-emerald-400 text-[18px] animate-spin shrink-0">
+                    <p className={`font-semibold text-body-md flex items-center gap-2 ${isDownloading ? "text-sky-100" : "text-emerald-100"}`}>
+                      <span className={`material-symbols-outlined text-[18px] animate-spin shrink-0 ${isDownloading ? "text-sky-400" : "text-emerald-400"}`}>
                         sync
                       </span>
-                      <span>{SEARCH_STAGES[searchStage].title}</span>
+                      <span>{ACTIVE_SEARCH_STAGES[searchStage].title}</span>
                     </p>
-                    <p className="text-xs text-emerald-200/70 mt-1 pl-6.5 leading-relaxed">
-                      {SEARCH_STAGES[searchStage].subtitle}
+                    <p className={`text-xs mt-1 pl-6.5 leading-relaxed ${isDownloading ? "text-sky-200/70" : "text-emerald-200/70"}`}>
+                      {ACTIVE_SEARCH_STAGES[searchStage].subtitle}
                     </p>
 
                     {/* Active Repository Scanning Telemetry Bar */}
                     <div className="mt-3 pl-6.5">
                       <div className="flex items-center gap-2 flex-wrap mb-2">
-                        <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-600/40 text-emerald-300">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                          arXiv: cs.AI / cs.CV / stat.ML
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-600/40 text-emerald-300">
-                          <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse"></span>
-                          OpenAlex DOI Graph
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-600/40 text-emerald-300">
-                          Relevance: &ge;7/10
-                        </span>
+                        {isDownloading ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-sky-950/70 border border-sky-600/40 text-sky-300">Project paper library</span>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-sky-950/70 border border-sky-600/40 text-sky-300">PDF file transfer</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-600/40 text-emerald-300">{sources.filter((source) => source.checked).map((source) => source.name).join(" · ") || "Academic sources"}</span>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-600/40 text-emerald-300">Finding relevant papers</span>
+                          </>
+                        )}
                       </div>
 
                       {/* Moving Laser Beam Scanner */}
-                      <div className="relative h-1.5 w-full bg-emerald-950/80 border border-emerald-800/30 rounded-full overflow-hidden">
-                        <div className="absolute inset-y-0 w-2/5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-laser-scan rounded-full"></div>
+                      <div className={`relative h-1.5 w-full rounded-full overflow-hidden ${isDownloading ? "bg-sky-950/80 border border-sky-800/30" : "bg-emerald-950/80 border border-emerald-800/30"}`}>
+                        <div className={`absolute inset-y-0 w-2/5 animate-laser-scan rounded-full bg-gradient-to-r from-transparent ${isDownloading ? "via-sky-400" : "via-emerald-400"} to-transparent`}></div>
                       </div>
                     </div>
 
@@ -1940,15 +2154,15 @@ export default function ProjectResearchChatbot({
                           key={step}
                           className={`h-1.5 rounded-full transition-all duration-500 ${
                             step === searchStage
-                              ? "w-8 bg-emerald-400 shadow-[0_0_8px_#34d399]"
+                              ? isDownloading ? "w-8 bg-sky-400 shadow-[0_0_8px_#38bdf8]" : "w-8 bg-emerald-400 shadow-[0_0_8px_#34d399]"
                               : step < searchStage
-                              ? "w-3 bg-emerald-600"
+                              ? isDownloading ? "w-3 bg-sky-600" : "w-3 bg-emerald-600"
                               : "w-2.5 bg-surface-container-high/80"
                           }`}
                         />
                       ))}
                       <span className="text-[10px] font-code-sm text-emerald-300/80 ml-auto">
-                        Stage {searchStage + 1} of 4
+                        <span className={isDownloading ? "text-sky-300/80" : "text-emerald-300/80"}>{isDownloading ? "Transfer in progress" : "Search in progress"}</span>
                       </span>
                     </div>
                   </div>
@@ -1962,7 +2176,7 @@ export default function ProjectResearchChatbot({
                   <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600/30 via-purple-600/35 to-indigo-600/30 border border-purple-500/45 flex items-center justify-center text-purple-300 shrink-0 shadow-[0_0_18px_rgba(168,85,247,0.3)] animate-synaptic-glow overflow-hidden">
                     <span className="absolute inset-0 rounded-xl border border-purple-400/40 animate-pulse-ring pointer-events-none"></span>
                     <span className="material-symbols-outlined text-[20px] text-purple-200 relative z-10 animate-pulse">
-                      psychology
+                      {activeTaskMode === "summary" ? "auto_stories" : activeTaskMode === "comparison" ? "compare_arrows" : activeTaskMode === "chat" ? "chat_bubble" : "psychology"}
                     </span>
                   </div>
 
@@ -1984,7 +2198,7 @@ export default function ProjectResearchChatbot({
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
                           <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-400"></span>
                         </span>
-                        Neural Reasoning
+                        {activeTaskMode === "summary" ? "Paper summary" : activeTaskMode === "comparison" ? "Paper comparison" : activeTaskMode === "chat" ? "Quick response" : "Research answer"}
                       </span>
                     </div>
 
@@ -1995,7 +2209,7 @@ export default function ProjectResearchChatbot({
                           neurology
                         </span>
                         <span className="truncate">
-                          Analyzing: <span className="font-semibold text-purple-100">&ldquo;{activeThinkingQuery}&rdquo;</span>
+                          {activeTaskMode === "summary" ? "Summarizing:" : activeTaskMode === "comparison" ? "Comparing:" : activeTaskMode === "chat" ? "Responding to:" : "Answering:"} <span className="font-semibold text-purple-100">&ldquo;{activeThinkingQuery}&rdquo;</span>
                         </span>
                       </div>
                     )}
@@ -2017,7 +2231,7 @@ export default function ProjectResearchChatbot({
                       <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-950/60 rounded-lg border border-purple-800/40 shadow-inner">
                         <span className="text-[10px] font-code-sm text-purple-300 flex items-center gap-1">
                           <span className="material-symbols-outlined text-[13px] text-purple-400">graphic_eq</span>
-                          Cognitive Pulse
+                          {activeTaskMode === "summary" ? "Summary synthesis" : activeTaskMode === "comparison" ? "Evidence comparison" : activeTaskMode === "chat" ? "Response" : "Evidence review"}
                         </span>
                         <div className="flex items-end gap-1 h-5 w-16 justify-center">
                           <span className="w-1 bg-purple-400 rounded-full wave-bar-1"></span>
@@ -2030,14 +2244,18 @@ export default function ProjectResearchChatbot({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-purple-950/70 border border-purple-700/40 text-purple-300">
-                          2048-D Embedding
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-purple-950/70 border border-purple-700/40 text-purple-300">
-                          pgvector Cosine
-                        </span>
-                      </div>
+                      {activeTaskMode !== "chat" && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {(activeTaskMode === "summary"
+                            ? ["Analyzed paper sections", "PDF page references"]
+                            : activeTaskMode === "comparison"
+                              ? ["Paper-by-paper evidence", "Source references"]
+                              : ["Analyzed PDFs", "Section and page citations"]
+                          ).map((label) => (
+                            <span key={label} className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-purple-950/70 border border-purple-700/40 text-purple-300">{label}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* Progress Step Dots */}
@@ -2061,6 +2279,83 @@ export default function ProjectResearchChatbot({
                   </div>
                 </div>
               )}
+
+              {/* Distinct Real-time Document Generation & Typesetting Indicator */}
+              {isGeneratingDoc && (
+                <div className="flex items-start gap-3 max-w-4xl mr-auto animate-fadeIn">
+                  {/* Distinct Amber Typesetting Avatar */}
+                  <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500/25 via-orange-500/30 to-amber-600/25 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0 shadow-[0_0_18px_rgba(245,158,11,0.25)] overflow-hidden">
+                    <span className="absolute inset-0 rounded-xl border border-amber-400/40 animate-pulse-ring pointer-events-none"></span>
+                    <span className="material-symbols-outlined text-[20px] text-amber-200 relative z-10 animate-pulse">
+                      print
+                    </span>
+                  </div>
+
+                  {/* Amber Typesetting Card */}
+                  <div className="bg-gradient-to-br from-amber-950/40 via-surface-container-low to-orange-950/20 border border-amber-500/40 rounded-2xl rounded-tl-none p-4.5 shadow-[0_8px_32px_rgba(245,158,11,0.15)] text-on-surface flex-1 max-w-xl relative overflow-hidden backdrop-blur-md">
+                    {/* Top Accent Gradient Bar */}
+                    <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-amber-500/0 via-amber-400 to-orange-400/0" />
+
+                    {/* Top Header Badge & Live Typesetting Status */}
+                    <div className="flex items-center justify-between gap-2 mb-2 pb-2.5 border-b border-amber-500/20">
+                      <span className="text-[11px] font-code-sm font-bold uppercase tracking-wider text-amber-300 px-3 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center gap-1.5 shadow-sm">
+                        <span className="material-symbols-outlined text-[14px] text-amber-400">
+                          {DOC_STAGES[docStage].icon}
+                        </span>
+                        {DOC_STAGES[docStage].badge}
+                      </span>
+                      <span className="text-code-sm text-amber-400/90 text-[11px] flex items-center gap-1.5 bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-800/40">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
+                        </span>
+                        {documentTaskKind === "summary" ? "Summary document" : documentTaskKind === "comparison" ? "Comparison document" : "Document export"}
+                      </span>
+                    </div>
+
+                    {/* Stage Title with spinning sync */}
+                    <p className="font-semibold text-body-md text-amber-100 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-amber-400 text-[18px] animate-spin shrink-0">
+                        sync
+                      </span>
+                      <span>{DOC_STAGES[docStage].title}</span>
+                    </p>
+                    <p className="text-xs text-amber-200/70 mt-1 pl-6.5 leading-relaxed">
+                      {DOC_STAGES[docStage].subtitle}
+                    </p>
+
+                    {/* Show only the file formats requested by the user. */}
+                    <div className="mt-3 pl-6.5 flex items-center gap-2 flex-wrap">
+                      {requestedDocumentFormats.map((format) => (
+                        <span key={format} className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-amber-950/70 border border-amber-600/40 text-amber-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                          {format} requested
+                        </span>
+                      ))}
+                      <span className="inline-flex items-center gap-1 text-[10px] font-code-sm px-2 py-0.5 rounded bg-amber-950/70 border border-amber-600/40 text-amber-300">Source references included when available</span>
+                    </div>
+
+                    {/* Progress Step Dots */}
+                    <div className="flex items-center gap-2 mt-3 pl-6.5">
+                      {[0, 1, 2, 3].map((step) => (
+                        <div
+                          key={step}
+                          className={`h-1.5 rounded-full transition-all duration-500 ${
+                            step === docStage
+                              ? "w-8 bg-amber-400 shadow-[0_0_8px_#f59e0b]"
+                              : step < docStage
+                              ? "w-3 bg-amber-600"
+                              : "w-2.5 bg-surface-container-high/80"
+                          }`}
+                        />
+                      ))}
+                      <span className="text-[10px] font-code-sm text-amber-300/80 ml-auto">
+                        Document in progress
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* ========================================== */}
@@ -2074,6 +2369,24 @@ export default function ProjectResearchChatbot({
                     <span className="material-symbols-outlined text-[14px]">bolt</span>
                     Quick:
                   </span>
+                  <button
+                    onClick={() => {
+                      setInputMessage("Summarize all eligible analyzed papers and give me a PDF");
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 transition-all whitespace-nowrap active:scale-95 cursor-pointer text-xs flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[13px]">picture_as_pdf</span>
+                    PDF Summary Report
+                  </button>
+                  <button
+                    onClick={() => {
+                      setInputMessage("Compare methods and results of analyzed papers and export as DOCX");
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-300 transition-all whitespace-nowrap active:scale-95 cursor-pointer text-xs flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[13px]">description</span>
+                    Word Comparison Report
+                  </button>
                   <button
                     onClick={() => {
                       setInputMessage("Download all remaining papers");
@@ -2460,19 +2773,21 @@ export default function ProjectResearchChatbot({
                       </button>
                       <button
                         type="submit"
-                        disabled={isSearching || isSynthesizing || !inputMessage.trim()}
+                        disabled={isSearching || isDownloading || isSynthesizing || isGeneratingDoc || !inputMessage.trim()}
                         className={`px-4 py-1.5 rounded-lg font-medium text-label-md font-label-md transition-all flex items-center gap-1.5 shadow-sm ${
-                          isSearching || isSynthesizing || !inputMessage.trim()
+                          isSearching || isDownloading || isSynthesizing || isGeneratingDoc || !inputMessage.trim()
                             ? "bg-surface-container-high text-outline cursor-not-allowed opacity-60"
                             : "bg-primary text-on-primary hover:bg-primary-fixed-dim cursor-pointer active:scale-95"
                         }`}
                       >
-                        {isSearching ? (
+                        {isSearching || isDownloading ? (
                           <>
-                            <span className="material-symbols-outlined text-[16px] animate-spin text-emerald-400">
-                              sync
+                            <span className={`material-symbols-outlined text-[16px] animate-spin ${isDownloading ? "text-sky-400" : "text-emerald-400"}`}>
+                              {isDownloading ? "downloading" : "sync"}
                             </span>
-                            <span className="text-emerald-300">Scanning...</span>
+                            <span className={isDownloading ? "text-sky-300" : "text-emerald-300"}>
+                              {isDownloading ? "Downloading..." : "Searching..."}
+                            </span>
                           </>
                         ) : isSynthesizing ? (
                           <>
@@ -2480,6 +2795,13 @@ export default function ProjectResearchChatbot({
                               autorenew
                             </span>
                             <span className="text-purple-300">Thinking...</span>
+                          </>
+                        ) : isGeneratingDoc ? (
+                          <>
+                            <span className="material-symbols-outlined text-[16px] animate-spin text-amber-400">
+                              sync
+                            </span>
+                            <span className="text-amber-300">Typesetting...</span>
                           </>
                         ) : (
                           <>

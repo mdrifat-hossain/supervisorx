@@ -39,7 +39,7 @@ An AI-powered research assistant that helps students, researchers, and academics
 
 Users enter a research topic or objective through a chatbot interface. The system searches supported academic APIs, such as arXiv, presents relevant papers, downloads selected papers where available, extracts and processes their contents, and stores searchable knowledge in a vector database.
 
-Users can then ask questions about an individual paper or a collection of papers. Responses should be grounded in retrieved source material and, where available, identify the source paper, page, section, and supporting passage. The system can also generate structured research summaries and export them as PDF reports.
+Users can then ask questions about an individual paper or a collection of papers. Responses should be grounded in retrieved source material and, where available, identify the source paper, page, section, and supporting passage. The system can also generate structured research summaries and export them as DOCX or PDF reports.
 
 ## Problem Statement
 
@@ -56,7 +56,7 @@ This project aims to reduce that effort by automating paper discovery and proces
 - Store processed paper content for semantic retrieval.
 - Answer questions using retrieved evidence from research papers.
 - Display supporting citations and source passages.
-- Generate PDF summaries for individual papers and collections of papers.
+- Generate PDF summaries for individual papers and collections of papers with proper references.
 - Organize research into separate projects.
 - Reuse previously downloaded and processed papers across projects where appropriate.
 - Support user-configured AI providers so the developer does not need to subsidize model inference.

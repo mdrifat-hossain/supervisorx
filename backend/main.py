@@ -582,6 +582,17 @@ def project_chat_endpoint(
                 "has_sufficient_evidence": comp_res.has_sufficient_evidence,
             }
 
+        elif intent == "generate_document":
+            from services.document_service import resolve_document_generation
+            doc_res = resolve_document_generation(
+                project_id=project_id,
+                query=raw_query,
+                router_res=router_res,
+                history=req.history,
+                api_key=req.api_key,
+            )
+            return doc_res
+
         elif intent == "summarize_papers":
             sum_res = summarize_analyzed_papers(
                 project_id=project_id,
@@ -656,4 +667,73 @@ def project_chat_endpoint(
             "answer": f"**Research Assistant Service Notice:** {str(exc)}",
             "citations": [],
         }
+
+
+class ExportDocumentRequest(BaseModel):
+    title: Optional[str] = "SupervisorX Research Report"
+    text: str
+    citations: Optional[List[Dict[str, Any]]] = None
+    format: Optional[str] = "pdf"
+    document_type: Optional[str] = "research_report"
+    project_name: Optional[str] = None
+    scope_description: Optional[str] = None
+
+
+@app.get("/api/projects/{project_id}/documents/{doc_id}/download")
+def download_project_document(
+    project_id: str,
+    doc_id: str,
+    format: str = Query("pdf", description="Format: pdf or docx"),
+    x_internal_api_key: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Securely downloads a generated PDF or DOCX report."""
+    from services.document_service import get_document_file_path
+
+    _require_project_access(x_user_id, x_internal_api_key, project_id)
+
+    fmt_clean = format.lower().strip()
+    file_path = get_document_file_path(project_id, doc_id, fmt_clean)
+    if not file_path or not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Document file not found")
+
+    ext = ".docx" if fmt_clean == "docx" else ".pdf"
+    media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if fmt_clean == "docx" else "application/pdf"
+    filename = f"SupervisorX_{doc_id}{ext}"
+
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type=media_type,
+    )
+
+
+@app.post("/api/projects/{project_id}/documents/export")
+def export_project_document(
+    project_id: str,
+    req: ExportDocumentRequest,
+    x_internal_api_key: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+):
+    """Directly converts markdown research text and citations into a professional PDF or DOCX."""
+    from services.document_service import create_structured_report
+
+    _require_project_access(x_user_id, x_internal_api_key, project_id)
+
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="Document text cannot be empty")
+
+    doc_meta, _, _ = create_structured_report(
+        project_id=project_id,
+        title=req.title or "SupervisorX Research Report",
+        text=req.text,
+        citations=req.citations,
+        document_type=req.document_type or "research_report",
+        format_type=req.format or "pdf",
+        project_name=req.project_name,
+        scope_description=req.scope_description or "Exported conversational report",
+    )
+
+    return {"success": True, "document": doc_meta}
+
 

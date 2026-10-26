@@ -10,7 +10,9 @@
     "auth:migrate": "node --experimental-strip-types scripts/migrate-auth.mjs"
   },
   "dependencies": {
+    "@types/katex": "^0.16.8",
     "better-auth": "^1.7.12",
+    "katex": "^0.19.1",
     "next": "16.4.2",
     "pg": "^8.23.1",
     "react": "19.3.0",

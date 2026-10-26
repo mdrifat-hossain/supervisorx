@@ -17,6 +17,7 @@ VALID_INTENTS = {
     "paper_qa",
     "compare_papers",
     "summarize_papers",
+    "generate_document",
     "mixed_research_request",
     "clarification_needed",
     "general_chat",
@@ -24,11 +25,13 @@ VALID_INTENTS = {
 
 
 class RouterResult(BaseModel):
-    intent: str = Field(description="One of: paper_search, paper_qa, compare_papers, summarize_papers, mixed_research_request, clarification_needed, general_chat")
+    intent: str = Field(description="One of: paper_search, paper_qa, compare_papers, summarize_papers, generate_document, mixed_research_request, clarification_needed, general_chat")
     extracted_query: str = Field(default="", description="The specific core scientific topic, question, or keyword query")
     target_papers: List[str] = Field(default_factory=list, description="Titles, IDs, or references to specific papers mentioned (e.g. ['2601.15305', 'second paper'])")
     comparison_dimensions: List[str] = Field(default_factory=list, description="Dimensions to compare if compare_papers (e.g. methodology, datasets, metrics)")
     summary_focus: Optional[str] = Field(default=None, description="Focus of summary (e.g. methodology, limitations, findings, full)")
+    document_format: Optional[str] = Field(default="pdf", description="'pdf' | 'docx' | 'both'")
+    document_source: Optional[str] = Field(default="new_query", description="'previous_answer' | 'new_query' | 'summary' | 'comparison' | 'question_list'")
     clarification_prompt: Optional[str] = Field(default=None, description="Clarifying question if clarification_needed")
     reasoning: Optional[str] = Field(default=None, description="Brief explanation for intent choice")
 
@@ -36,41 +39,56 @@ class RouterResult(BaseModel):
 SYSTEM_PROMPT = """You are the scientific intent router for SupervisorX, an AI research assistant.
 Analyze the user's latest query along with recent conversation history and classify their intent into exactly ONE of the following:
 
-1. "paper_search":
+1. "generate_document":
+   - The user explicitly asks to generate, create, download, or export a file, report, summary, comparison, or answer as a PDF (.pdf) or Word document (.docx).
+   - Examples:
+     * "Give me this answer as a PDF"
+     * "Generate a Word document containing this summary"
+     * "Turn your previous answer into a professionally formatted Word document"
+     * "Create a detailed PDF comparing these papers"
+     * "Answer these questions in a DOCX file"
+     * "Summarize all eligible analyzed papers and give me a PDF"
+     * "Make this a PDF" / "Export as Word"
+   - In your JSON response, set "document_format" to "pdf", "docx", or "both".
+   - If the user refers to the previous message ("this", "your previous answer", "the above summary"), set "document_source" to "previous_answer". Otherwise set it to "new_query", "summary", or "comparison".
+
+2. "paper_search":
    - The user wants to discover, search, fetch, or find NEW candidate research papers or preprints from arXiv or academic literature.
    - Examples: "Find papers about gated sparse attention", "Search for radiomics survival prediction literature", "Bring me 5 recent papers on transformer quantization".
 
-2. "paper_qa":
+3. "paper_qa":
    - The user asks a scientific question, asks for an explanation of a concept, mechanism, formula, finding, or result that should be answered from the ANALYZED papers in their project library.
    - Examples: "What is Gated Sparse Attention and how does its dynamic gating work?", "What are the main limitations reported in the paper?", "Explain the methodology of attention sparsification", "How do the experimental results compare to baseline?".
 
-3. "compare_papers":
-   - The user explicitly asks to compare two or more papers in the project library.
+4. "compare_papers":
+   - The user explicitly asks to compare two or more papers in the project library WITHOUT asking for a file.
    - Examples: "Compare Paper 1 and Paper 2", "Compare these papers across dataset size and accuracy", "What are the key methodological differences between the two analyzed papers?".
 
-4. "summarize_papers":
-   - The user asks for a structured summary or walkthrough of one or more papers in their project.
+5. "summarize_papers":
+   - The user asks for a structured summary or walkthrough of one or more papers in their project WITHOUT asking for a file.
    - Examples: "Summarize the GSA paper", "Give me an executive summary of the analyzed paper", "Explain this paper as if I am a beginner", "Summarize the methodology and limitations".
 
-5. "mixed_research_request":
+6. "mixed_research_request":
    - The user asks to BOTH search for papers AND compare/summarize or answer questions in the same message.
    - Example: "Find papers on linear attention and compare their computational complexity".
 
-6. "clarification_needed":
+7. "clarification_needed":
    - The request is severely ambiguous or refers to an unidentifiable paper that cannot be resolved from conversation context.
 
-7. "general_chat":
+8. "general_chat":
    - Greetings, conversational courtesies, or capabilities questions ("Hello", "What can you do?", "Thanks!").
 
 CRITICAL INSTRUCTIONS:
 - You must respond with a strict, valid JSON object only. No markdown fences, no preamble.
 - JSON structure:
 {
-  "intent": "paper_search" | "paper_qa" | "compare_papers" | "summarize_papers" | "mixed_research_request" | "clarification_needed" | "general_chat",
-  "extracted_query": "Clean scientific search or QA query without conversational filler",
+  "intent": "generate_document" | "paper_search" | "paper_qa" | "compare_papers" | "summarize_papers" | "mixed_research_request" | "clarification_needed" | "general_chat",
+  "extracted_query": "Clean scientific search, QA, or document query without conversational filler",
   "target_papers": ["list of papers, titles, or relative indices mentioned"],
   "comparison_dimensions": ["methodology", "dataset", "metrics", etc.],
   "summary_focus": "full" | "methodology" | "results" | "limitations",
+  "document_format": "pdf" | "docx" | "both",
+  "document_source": "previous_answer" | "new_query" | "summary" | "comparison" | "question_list",
   "clarification_prompt": null,
   "reasoning": "brief explanation"
 }
@@ -100,6 +118,27 @@ def _heuristic_intent_fallback(text: str) -> RouterResult:
     paper_idx_matches = re.findall(r"\bpaper\s*#?(\d+)\b", lower)
     for idx_str in paper_idx_matches:
         target_papers.append(f"paper {idx_str}")
+
+    # Document generation intent
+    doc_indicators = [
+        "pdf", "docx", "word doc", "word document", "word file", "as a pdf", "in a pdf",
+        "in a docx", "downloadable doc", "downloadable pdf", "export as", "export this",
+        "make this a pdf", "make this a docx", "generate a pdf", "generate a docx",
+        "create a pdf", "create a docx", "put this in a word", "give me this as a pdf",
+        "give me this as a docx", "turn this into a pdf", "turn your previous answer into a",
+        "turn your previous answer", "as a word document", "as a word doc", "in a word document"
+    ]
+    if any(k in lower for k in doc_indicators):
+        fmt = "both" if ("pdf" in lower and ("doc" in lower or "word" in lower)) else ("docx" if ("docx" in lower or "word" in lower) else "pdf")
+        src = "previous_answer" if any(w in lower for w in ["this", "previous", "above", "last answer", "that answer", "prior turn", "your answer", "the summary", "turn your previous"]) else "new_query"
+        return RouterResult(
+            intent="generate_document",
+            extracted_query=text,
+            target_papers=target_papers,
+            document_format=fmt,
+            document_source=src,
+            reasoning="Heuristic fallback detected document export keywords"
+        )
 
     # Compare intent
     if any(k in lower for k in ["compare", "comparison", "difference between", "versus", " vs "]):
@@ -217,14 +256,12 @@ def route_user_intent(
 
     # Parse JSON from response
     try:
-        # Strip potential markdown formatting
         cleaned_json = raw_response
         if "```json" in cleaned_json:
             cleaned_json = cleaned_json.split("```json")[1].split("```")[0].strip()
         elif "```" in cleaned_json:
             cleaned_json = cleaned_json.split("```")[1].split("```")[0].strip()
 
-        # Find first { and last }
         start_idx = cleaned_json.find("{")
         end_idx = cleaned_json.rfind("}")
         if start_idx != -1 and end_idx != -1:
@@ -239,6 +276,8 @@ def route_user_intent(
         target_papers = data.get("target_papers") or []
         comparison_dims = data.get("comparison_dimensions") or []
         summary_focus = data.get("summary_focus")
+        doc_format = data.get("document_format") or "pdf"
+        doc_source = data.get("document_source") or "new_query"
         clarification_prompt = data.get("clarification_prompt")
         reasoning = data.get("reasoning")
 
@@ -248,6 +287,8 @@ def route_user_intent(
             target_papers=target_papers if isinstance(target_papers, list) else [str(target_papers)],
             comparison_dimensions=comparison_dims if isinstance(comparison_dims, list) else [],
             summary_focus=summary_focus,
+            document_format=doc_format,
+            document_source=doc_source,
             clarification_prompt=clarification_prompt,
             reasoning=reasoning
         )

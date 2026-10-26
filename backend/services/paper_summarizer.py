@@ -17,6 +17,93 @@ from services.embedding_service import generate_embeddings_batch
 
 logger = logging.getLogger("paper_summarizer")
 
+SUMMARY_POINT_LABELS = [
+    "Core Problem & Objective",
+    "Methodology & Architecture",
+    "Experimental Setup & Datasets",
+    "Key Findings & Reported Metrics",
+    "Limitations & Open Questions",
+]
+
+
+def _normalize_outline_text(value: str) -> str:
+    value = re.sub(r"^\s*#{1,6}\s*", "", value)
+    value = re.sub(r"^\s*\d+[.)]\s*", "", value)
+    value = re.sub(r"^\s*paper\s+\d+[.:)]?\s*", "", value, flags=re.IGNORECASE)
+    value = value.strip().strip("*_` ")
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _number_summary_outline(answer: str, papers: List[Dict[str, Any]]) -> str:
+    """Give each paper a global number and restart the five summary point numbers per paper."""
+    title_lookup = {
+        _normalize_outline_text(str(paper.get("title") or "")): (index, str(paper.get("title") or ""))
+        for index, paper in enumerate(papers, start=1)
+        if paper.get("title")
+    }
+    if not title_lookup:
+        return answer
+
+    lines = answer.splitlines()
+    output: List[str] = []
+    current_paper_index = 0
+    paper_number = 0
+    current_has_point_one = False
+    seen_papers = set()
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        normalized_line = _normalize_outline_text(line)
+        paper_match = title_lookup.get(normalized_line)
+        if paper_match:
+            title = paper_match[1]
+            if normalized_line not in seen_papers:
+                seen_papers.add(normalized_line)
+                paper_number += 1
+            current_paper_index = paper_number
+            current_has_point_one = False
+            if output and output[-1].strip() in {"---", "***", "___"}:
+                output.pop()
+            output.extend(["", f"## Paper {current_paper_index}. {title}", ""])
+            continue
+
+        # Convert each standard section label, whether inline or already written as a heading,
+        # into a numbered subheading that starts at one for every paper.
+        cleaned = re.sub(r"^\s*#{1,6}\s*", "", line)
+        cleaned = re.sub(r"^\s*[-*]\s+", "", cleaned)
+        cleaned = cleaned.strip().strip("*_` ")
+        cleaned = re.sub(r"^\s*\d+[.)]\s*", "", cleaned)
+        colon_index = cleaned.find(":")
+        label_text = cleaned[:colon_index] if colon_index >= 0 else cleaned
+        normalized_label = _normalize_outline_text(label_text)
+        point_number = next(
+            (index for index, label in enumerate(SUMMARY_POINT_LABELS, start=1)
+             if _normalize_outline_text(label) == normalized_label),
+            None,
+        )
+        if point_number == 1 and (not current_paper_index or current_has_point_one):
+            if paper_number < len(papers):
+                paper_number += 1
+                current_paper_index = paper_number
+                paper_title = str(papers[paper_number - 1].get("title") or f"Analyzed Paper {paper_number}")
+                output.extend(["", f"## Paper {current_paper_index}. {paper_title}", ""])
+                current_has_point_one = False
+
+        if current_paper_index and point_number:
+            value = cleaned[colon_index + 1:].strip() if colon_index >= 0 else ""
+            output.extend([f"### {point_number}. {SUMMARY_POINT_LABELS[point_number - 1]}"])
+            if value:
+                output.append(value)
+            if point_number == 1:
+                current_has_point_one = True
+            continue
+
+        if line in {"---", "***", "___"}:
+            continue
+        output.append(raw_line)
+
+    return "\n".join(output).strip()
+
 
 class SummaryResult(BaseModel):
     success: bool
@@ -56,7 +143,15 @@ def summarize_analyzed_papers(
         )
 
     lower_q = query.lower()
-    if re.search(r"\b(?:all|every|each)\s+(?:the\s+)?papers?\b", lower_q):
+    all_papers_request = bool(
+        re.search(
+            r"\b(?:all|every|each)(?:\s+of)?\s+(?:(?:the|analyzed|eligible|downloaded|available|indexed|remaining)\s+){0,4}(?:papers?|studies|articles)\b|"
+            r"\b(?:every|each)\s+(?:(?:analyzed|eligible|downloaded|available|indexed)\s+)?paper\b|"
+            r"\ball\s+(?:(?:the|analyzed|eligible|downloaded|available|indexed)\s+){0,3}papers?\s+(?:that\s+are\s+)?(?:analyzed|downloaded|indexed)\b",
+            lower_q,
+        )
+    )
+    if all_papers_request:
         target_papers = eligible_papers
     else:
         mentions = list(target_paper_mentions or []) + [query]
@@ -86,14 +181,22 @@ def summarize_analyzed_papers(
     if summary_focus:
         focus_query = f"{summary_focus} {query}"
 
-    # Generate query embedding once for all papers (if embeddings service is available)
-    query_vector = None
+    # Retrieve evidence by report section so each paper contributes objective,
+    # method, experiment, result, and limitation evidence instead of only generic matches.
+    evidence_queries = [
+        "research paper problem motivation research question objective and contribution",
+        "research paper methodology model architecture algorithm design and implementation",
+        "research paper experimental setup datasets benchmarks sample sizes and evaluation metrics",
+        "research paper results findings quantitative metrics comparisons and conclusions",
+        "research paper limitations assumptions threats to validity future work and open questions",
+    ]
+    retrieval_queries = evidence_queries + [focus_query]
+    evidence_query_vectors = None
     try:
-        q_embs = generate_embeddings_batch([focus_query], api_key=api_key)
-        if q_embs and len(q_embs) > 0 and len(q_embs[0]) > 0:
-            query_vector = q_embs[0]
+        evidence_query_vectors = generate_embeddings_batch(retrieval_queries, api_key=api_key)
     except Exception as e:
-        logger.info(f"Query vector generation skipped or offline: {e}")
+        logger.info(f"Section query vectors skipped or offline: {e}")
+        evidence_query_vectors = None
 
     all_evidence = []
     citation_catalog: List[CitationItem] = []
@@ -104,17 +207,56 @@ def summarize_analyzed_papers(
 
     for p in target_papers:
         pid = p["paper_id"]
-        p_evidence = retrieve_relevant_evidence(
-            project_id=project_id,
-            query_text=focus_query,
-            target_paper_ids=[pid],
-            limit=chunk_limit_per_paper,
-            api_key=api_key,
-            query_vector=query_vector,
-        )
+        p_evidence = []
+        if evidence_query_vectors and len(evidence_query_vectors) == len(retrieval_queries):
+            seen_evidence_ids = set()
+            for evidence_query, query_vector in zip(evidence_queries, evidence_query_vectors[:-1]):
+                matches = retrieve_relevant_evidence(
+                    project_id=project_id,
+                    query_text=evidence_query,
+                    target_paper_ids=[pid],
+                    limit=2 if len(target_papers) <= 2 else 1,
+                    api_key=api_key,
+                    query_vector=query_vector,
+                )
+                for match in matches:
+                    evidence_id = match.get("id") or (
+                        match.get("paper_id"), match.get("page_start"), match.get("page_end"),
+                        match.get("section_title"), match.get("content_text"),
+                    )
+                    if evidence_id not in seen_evidence_ids:
+                        seen_evidence_ids.add(evidence_id)
+                        p_evidence.append(match)
+            if len(p_evidence) < chunk_limit_per_paper:
+                general_matches = retrieve_relevant_evidence(
+                    project_id=project_id,
+                    query_text=focus_query,
+                    target_paper_ids=[pid],
+                    limit=chunk_limit_per_paper,
+                    api_key=api_key,
+                    query_vector=evidence_query_vectors[-1],
+                )
+                for match in general_matches:
+                    evidence_id = match.get("id") or (
+                        match.get("paper_id"), match.get("page_start"), match.get("page_end"),
+                        match.get("section_title"), match.get("content_text"),
+                    )
+                    if evidence_id not in seen_evidence_ids:
+                        seen_evidence_ids.add(evidence_id)
+                        p_evidence.append(match)
+                    if len(p_evidence) >= chunk_limit_per_paper:
+                        break
+        else:
+            p_evidence = retrieve_relevant_evidence(
+                project_id=project_id,
+                query_text=focus_query,
+                target_paper_ids=[pid],
+                limit=chunk_limit_per_paper,
+                api_key=api_key,
+            )
         paper_evidence_map[pid] = p_evidence
 
-        for ev in p_evidence[:8]:
+        for ev in p_evidence[:chunk_limit_per_paper]:
             p_start = ev["page_start"]
             p_end = ev["page_end"]
             if p_start and p_end and p_start != p_end:
@@ -166,6 +308,9 @@ def summarize_analyzed_papers(
         "GROUNDING REQUIREMENTS:\n"
         "- Attach inline citations [1], [2] to every specific claim, result, and methodology detail.\n"
         "- If multiple papers are summarized, summarize each paper separately before presenting any synthesis.\n"
+        "- Give every requested paper its own numbered heading using its exact title from PAPERS TO SUMMARIZE. The number of paper headings must equal the number of listed papers.\n"
+        "- When the user asks for all analyzed papers, include every paper listed in PAPERS TO SUMMARIZE, once each; never silently summarize only a subset.\n"
+        "- For comparable numeric results, use a compact Markdown table with clear metric names and one row per model/system instead of a long list of repeated metric bullets. Explain briefly what the values mean and do not claim statistical significance unless the evidence says so.\n"
         "- For limitations, distinguish author-stated limitations from potential limitations inferred from the study. Never label an inference as an author statement.\n"
         "- Do not guess or invent metrics. If the supplied evidence does not establish a requested fact, say so.\n"
         "- Write complete sentences; do not truncate with ellipses.\n"
@@ -190,7 +335,7 @@ def summarize_analyzed_papers(
         llm = build_chatbot_llm(
             model_name=settings.CHATBOT_MODEL,
             temperature=0.15,
-            max_tokens=3500,
+            max_tokens=max(3500, min(8000, 1300 * len(target_papers))),
             request_timeout=35.0,
         )
         resp = llm.invoke(messages)
@@ -223,7 +368,13 @@ def summarize_analyzed_papers(
             notice=notice,
         )
 
-    referenced_indices = set(int(m) for m in re.findall(r"\[(\d+)\]", answer_text))
+    answer_text = _number_summary_outline(answer_text, target_papers)
+
+    referenced_indices = {
+        int(number)
+        for match in re.finditer(r"\[(\d+(?:\s*,\s*\d+)*)\]", answer_text)
+        for number in re.findall(r"\d+", match.group(1))
+    }
     active_citations = [c for c in citation_catalog if c.citation_index in referenced_indices]
     if not active_citations:
         active_citations = citation_catalog[:8]
