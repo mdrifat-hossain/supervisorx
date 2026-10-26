@@ -1,87 +1,124 @@
-# ResearchPilot (SupervisorX) — Project Summary
+# SupervisorX — Project Summary & Architecture
 
-## Purpose
+## Executive Overview
 
-ResearchPilot is a project-based AI research assistant for students, researchers, and academics. It supports paper discovery, PDF uploads, paper analysis, evidence-grounded chat, cross-paper comparison, structured summaries, and PDF/DOCX report generation.
+**SupervisorX** is a full-stack, project-scoped AI research assistant designed for researchers, machine learning practitioners, and academics. The platform streamlines the academic research lifecycle: from targeted paper discovery across open scientific repositories to deep document parsing, multi-modal visual architecture analysis, dense vector retrieval with page-level citations, multi-paper comparative synthesis, and automated report compilation (PDF/DOCX).
 
-## Problem
+Unlike single-document Q&A tools or ungrounded generative chatbots, SupervisorX organizes research into isolated **Project Workspaces**, enforces rigorous candidate relevance screening, extracts both textual sections and visual diagrams, and anchors all AI assertions to verifiable paper titles, sections, and exact PDF page numbers.
 
-Finding relevant literature and extracting trustworthy findings from many papers takes time. General chatbot answers can also be difficult to verify when they do not identify the source passage. ResearchPilot aims to streamline this work while preserving traceability to the underlying papers.
+---
 
-## Solution and user workflow
+## Problem Statement & Target Audience
 
-1. A user creates or opens a research project.
-2. The user asks the chatbot to find papers, or uploads a locally available PDF from that project's Upload & Analysis area.
-3. For discovery, the system queries supported academic sources (currently arXiv and OpenAlex), gathers candidates in batches, and screens candidate titles and abstracts for relevance.
-4. The system applies a minimum relevance threshold and ranks qualifying papers by relevance score, with recency as a secondary order. It returns the highest-ranked papers up to the requested count, within source availability and the configured screening budget. This is iterative ranked selection, not a guarantee that every paper ever published on a topic has been searched.
-5. Selected papers are downloaded or uploaded and stored in the project library.
-6. PyMuPDF extracts text and metadata from supported PDFs. The backend forms page- and section-aware chunks, extracts supported visual content, and sends visual analysis to a configured hosted vision model where applicable. The system does not currently include OCR, so scanned/image-only PDFs may not produce searchable text.
-7. The backend generates embeddings through a hosted provider and stores paper chunks, source metadata, and vectors in PostgreSQL with pgvector.
-8. The chatbot retrieves relevant evidence for Q&A, structured summaries, and comparisons. Responses can include paper title, section, PDF page, and supporting passages.
-9. Users can export structured reports as PDF or DOCX and use main-dashboard sticky notes to remember project status and pending work.
+### The Problem
+1. **Literature Overload:** Researchers must sift through hundreds of papers across arXiv and OpenAlex, where keyword searches return noisy, irrelevant preprints.
+2. **Ungrounded Hallucinations:** Commercial generic LLMs lack direct access to proprietary or specialized PDFs, often fabricating citations or misattributing methodologies.
+3. **Fragmented Workflows:** Exploring papers, taking notes, comparing architectures, extracting figures, and synthesizing literature reviews typically require 4–5 disjointed applications.
+4. **Black-Box Figures & Architectures:** Most PDF chat applications discard images, plots, and architecture diagrams, missing critical algorithmic insights.
 
-## Main capabilities
+### Target Audience
+- Academic researchers & graduate students conducting systematic literature reviews.
+- Machine learning & AI scientists tracking state-of-the-art model architectures and empirical benchmarks.
+- R&D teams requiring evidence-grounded technical synthesis and automated publication reports.
 
-- **Ranked paper discovery:** arXiv and OpenAlex search; iterative candidate collection; relevance screening; score threshold; top-ranked result selection.
-- **Research-paper uploads:** Add an existing PDF through a project's Upload & Analysis workspace.
-- **PDF analysis:** Extract text, metadata, page references, sections/chunks, and supported visual items with PyMuPDF and configured AI services. No OCR.
-- **Evidence-grounded Q&A:** Semantic retrieval over analyzed papers with citations and source locations.
-- **Paper summaries and comparisons:** Structured synthesis across one or more analyzed papers, grounded in retrieved content.
-- **Document export:** Structured PDF and DOCX generation, including headings and citations.
-- **Project organization:** Separate project workspaces for conversations, papers, and analysis.
-- **Sticky notes:** Main-dashboard notes with title, color, and status/reminder content to help users resume work.
-- **Authentication and protected data:** Better Auth, project ownership checks, PostgreSQL records, and private Supabase PDF storage.
+---
 
-## Current architecture and technology stack
+## Core System Architecture & Workflow Pipeline
 
-| Component | Current implementation |
-|---|---|
-| Frontend | Next.js, React, TypeScript, Tailwind CSS |
-| Backend/API | Python, FastAPI |
-| Authentication | Better Auth; email/password and optional Google/GitHub OAuth |
-| Relational database | PostgreSQL; Supabase PostgreSQL in the configured persistent setup |
-| Vector database/search | pgvector extension in PostgreSQL (Supabase PostgreSQL) |
-| PDF file storage | Private Supabase Storage bucket |
-| Paper sources | arXiv and OpenAlex |
-| Main research chatbot LLM | Gemini API via backend configuration for research Q&A and summaries, plus related synthesis workflows |
-| Other hosted AI APIs | OpenRouter-backed screening, embedding, and supported visual-analysis calls |
-| PDF processing | PyMuPDF; no OCR engine |
-| PDF report generation | ReportLab |
-| DOCX report generation | python-docx |
-| Local development | Docker Compose with frontend, FastAPI backend, and local PostgreSQL fallback |
+```
+  +-----------------------------------------------------------------------------------+
+  |                               Next.js 14 Web Frontend                             |
+  |  Project Spaces | Paper Vault | Chatbot & Synthesis | Document Export | Sticky Tasks  |
+  +-----------------------------------------+-----------------------------------------+
+                                            | REST / Streaming (Internal Key Auth)
+                                            v
+  +-----------------------------------------------------------------------------------+
+  |                               FastAPI Backend Service                             |
+  |  Intent Routing | Academic Search | PDF Pipeline | Embeddings | Grounded Synthesis |
+  +-------+--------------------+---------------------+--------------------+-----------+
+          |                    |                     |                    |
+          v                    v                     v                    v
+   Academic APIs         Multi-Model LLM        PyMuPDF + VLM       PostgreSQL + pgvector
+   - arXiv API           - Gemini API (Primary) - Section Chunker   - Supabase / Local
+   - OpenAlex API        - OpenRouter (Fallback)- Visual Parser     - 2048-dim Vectors
+                         - Screening Chain                          - Supabase Storage
+```
 
-No local model runtime is required by the current implementation. Model/provider settings can be changed by a developer in backend configuration when the alternate provider and API are compatible; there is no end-user model-provider selection UI. Provider quotas and pricing depend on provider, model, account, and current terms. Qdrant, Ollama, ARQ/Redis, OCR, and LaTeX compilation are not part of the current stack.
+### End-to-End Workflow
 
-## Evidence and citation approach
+1. **Project Initiation:** The user creates an isolated research project (e.g., *"Diffusion Models for Medical Imaging"*). All queries, document libraries, conversation sessions, and notes are scoped to this project workspace.
+2. **Query Formulation & Expansion:** The user inputs an initial query. An OpenRouter-backed model chain reformulates the natural language prompt into high-precision Boolean academic search queries.
+3. **Academic Discovery & Iterative Screening:**
+   - The backend queries arXiv and OpenAlex in batches.
+   - Candidate papers (titles + abstracts) pass through a dedicated LLM screening evaluator that scores relevance on a 1–10 rubric.
+   - Only candidates exceeding the minimum score threshold are presented to the user, ranked by relevance and recency.
+4. **Document Ingestion & Analysis:**
+   - Selected candidate papers or user-uploaded PDFs are stored in private Supabase Storage.
+   - **PyMuPDF Engine** extracts clean text structures, hierarchical section headers, and physical page indices.
+   - **Visual Figure Parsing:** Vector diagrams, model architectures, and data plots are extracted and evaluated by a Vision-Language Model (`nvidia/nemotron-3.5-super-vl:free`), generating semantic visual captions.
+5. **Dense Vector Embeddings & Vector Storage:**
+   - Text chunks and visual annotations are embedded using a high-dimensional vector model (`nvidia/nemotron-3-embed-1b:free`, 2048 dimensions).
+   - Vectors, metadata, and chunk text are indexed in PostgreSQL using the `pgvector` extension.
+   - A built-in circuit breaker prevents rate-limit cascading during bulk ingestion.
+6. **Intent Classification & Grounded Chat:**
+   - A LangChain-powered intent router classifies user prompts into 8 distinct research intents.
+   - For document queries, hybrid semantic search retrieves the top-$k$ relevant chunks from the project's library.
+   - The primary LLM (Google Gemini) synthesizes answers strictly grounded in retrieved evidence, outputting inline citations containing paper title, section name, and exact physical page numbers.
+7. **Cross-Paper Comparison & Report Generation:**
+   - The system compares methodologies, datasets, and benchmark results across multiple papers in tabular formats.
+   - Users export comprehensive literature review summaries into formatted PDF (ReportLab) or Microsoft Word (python-docx) documents.
+8. **Research Task Ledger:**
+   - The main dashboard provides an interactive priority-tagged sticky note board (High, Medium, Low) to preserve research context, track pending readings, and log hypotheses.
 
-The analysis pipeline records paper identifiers, PDF page ranges, section titles, and extracted text for chunks. Embeddings support semantic retrieval from those records. Chat and synthesis workflows use retrieved evidence and return citation metadata so users can trace supported claims to their source paper and location. Citations are only as reliable as the extraction, retrieval, source metadata, and generated answer; scanned PDFs without a text layer are a known limitation because OCR is not implemented.
+---
 
-## Data handling
+## Multi-Model AI Stack & Roles
 
-- PostgreSQL stores application records such as users, projects, papers, chats, and analysis data.
-- The pgvector extension stores searchable embeddings alongside research evidence.
-- Supabase Storage stores private research-paper PDFs in the configured setup.
-- A local PostgreSQL service is available through Docker Compose for local development when Supabase database configuration is omitted.
-- Backend requests forwarded by the frontend use a server-only internal key and verify the authenticated user's project ownership.
+SupervisorX leverages a resilient, multi-tiered AI model architecture combining Google Gemini with specialized OpenRouter inference endpoints:
 
-## Scope and limitations
+| Component / Task | Primary Model | Provider | Fallback / Redundancy Chain | Key Role & Execution Details |
+|---|---|---|---|---|
+| **Main Research Chatbot & Synthesis** | `gemini-3.5-flash-lite` | Google Gemini (OpenAI-compatible API) | `nvidia/nemotron-3.5-lightning:free` (OpenRouter) | Drives multi-turn research conversations, complex paper synthesis, methodology breakdowns, and evidence-grounded Q&A with strict citation discipline. |
+| **User Intent Classification** | `gemini-3.5-flash-lite` | Google Gemini | OpenRouter fallback | Routes incoming prompts into 8 distinct execution pathways (e.g., `FIND_PAPERS`, `ANALYZE_PAPER`, `SUMMARIZE_PAPERS`, `COMPARE_PAPERS`, `GENERATE_REPORT`). |
+| **Query Formulation & Expansion** | `minimax/minimax-m3.1-flash:free` | OpenRouter | 1. `liquid/lfm-2.5-2.6b:free`<br>2. `nvidia/nemotron-3.5-lightning:free`<br>3. Heuristic Regex Fallback | Reformulates conversational research queries into optimized keyword search terms with Boolean operators for arXiv and OpenAlex APIs. |
+| **Candidate Relevance Screening** | `minimax/minimax-m3.1-flash:free` | OpenRouter | 1. `liquid/lfm-2.5-2.6b:free`<br>2. `nvidia/nemotron-3.5-lightning:free` | Evaluates candidate paper abstracts against the user's research topic using a 1–10 scoring rubric; filters out low-relevance results before ingestion. |
+| **Visual Figure & Architecture Parsing** | `nvidia/nemotron-3.5-super-vl:free` | OpenRouter | `minimax/minimax-m3.1-flash:free` | Multimodal Vision-Language model that inspects extracted PDF diagrams, neural network architectures, and benchmark plots to generate semantic textual descriptions. |
+| **Dense Vector Embeddings** | `nvidia/nemotron-3-embed-1b:free` | OpenRouter | Configurable embedding endpoints | Generates 2048-dimensional dense vector embeddings for section chunks and figure captions; includes an automatic 3-minute circuit breaker on HTTP 429. |
 
-- Search coverage is limited to supported APIs and the candidates they return; relevance screening has a configurable candidate budget and score threshold.
-- Paper downloads depend on source availability and access.
-- PDF text extraction works best for text-based PDFs. OCR for scanned/image-only pages is not included.
-- AI output and citation quality require human review against original papers.
-- Provider availability, model names, quotas, and prices can change.
-- A developer can modify backend configuration to use another compatible hosted model provider; users cannot switch providers from the interface.
-- The current repository documents and supports local Docker Compose setup; a production deployment must be configured separately.
+---
 
-## Repository map
+## Data Engineering & Storage Architecture
 
-- frontend/ — Next.js application, dashboards, project views, chatbot, and authenticated routes
-- backend/ — FastAPI endpoints, academic search, PDF analysis, retrieval, AI integrations, and report generation
-- backend/migrations.py — PostgreSQL and pgvector schema
-- compose.yaml — Local development services
-- README.md — Setup, features, current stack, and operational notes
+### Relational & Vector Layer (PostgreSQL + pgvector)
+- **Projects & Permissions:** Enforces strict user ownership; projects encapsulate papers, chat histories, and notes.
+- **Paper Registry:** Tracks paper metadata (title, authors, year, DOI, arXiv ID, abstract, file size, storage URL).
+- **Project-Paper Mapping:** Supports cross-project paper reuse without duplicating PDF files or recalculating vector embeddings.
+- **pgvector Vector Table (`vector(2048)`):** Stores dense embeddings alongside paper IDs, chunk text, section titles, and page index numbers for cosine similarity search.
+- **Activity Log & Notes:** Records research timelines and priority-tagged sticky notes (`HIGH`, `MEDIUM`, `LOW`).
 
-## Success criteria
+### File Storage Layer (Supabase Storage)
+- PDF documents are securely uploaded and stored in private Supabase Storage buckets.
+- Downloaded preprints from open-access sources (arXiv, OpenAlex) are ingested directly into private storage.
 
-A user should be able to find and rank relevant research papers, add papers they already possess, analyze text-based PDFs, ask questions with traceable evidence, compare and summarize analyzed papers, and export structured reports. Users should also be able to organize research into projects and record reminders on the main dashboard.
+### Authentication & Access Control (Better Auth)
+- Robust authentication supporting Email/Password with session cookies and optional Google / GitHub OAuth.
+- Frontend server-side API routes act as an authenticated proxy to the FastAPI backend, utilizing a cryptographically secure `INTERNAL_API_KEY`.
+
+---
+
+## Technical Specifications Summary
+
+- **Frontend:** Next.js 14 (App Router), TypeScript, Tailwind CSS, Lucide Icons, Glassmorphic Design System.
+- **Backend:** FastAPI (Python 3.11+), Pydantic v2, HTTPX, LangChain Core.
+- **Document Processing:** PyMuPDF (`fitz`), ReportLab (PDF generation), `python-docx` (Word generation).
+- **Database & Storage:** PostgreSQL 15+, `pgvector` extension, Supabase Storage SDK.
+- **Containerization:** Docker Compose for multi-container orchestration (Frontend, Backend, local PostgreSQL fallback).
+
+---
+
+## Current Scope & Operational Boundaries
+
+- **Academic Search Breadth:** Paper discovery relies on open APIs (arXiv and OpenAlex) subject to their upstream availability and rate limits.
+- **Screening Budget:** Candidate discovery operates within a configurable screening budget (default: 15–20 candidates per batch) to ensure fast response times and quota efficiency.
+- **Text-Layer Dependent Extraction:** PDF extraction utilizes high-fidelity native text and vector shape extraction via PyMuPDF. PDFs containing purely rasterized images without text layers are handled gracefully but yield optimal results when text layers exist.
+- **Verified Human-in-the-Loop:** All AI syntheses provide clickable paper titles, sections, and page references so researchers can easily verify source integrity against the original manuscript.

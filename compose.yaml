@@ -10,6 +10,7 @@ services:
       - /app/.next
     environment:
       NEXT_TELEMETRY_DISABLED: "1"
+      __NEXT_DISABLE_DEV_OVERLAY_UX: "1"
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}

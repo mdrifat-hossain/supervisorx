@@ -89,6 +89,26 @@ export default function RootLayout({
                     window.location.reload();
                   }
                 });
+
+                function hideDevOverlay() {
+                  var portal = document.querySelector('nextjs-portal');
+                  if (portal) {
+                    portal.style.setProperty('display', 'none', 'important');
+                    if (portal.shadowRoot) {
+                      var toast = portal.shadowRoot.querySelector('[data-nextjs-toast], .nextjs-toast-errors-parent');
+                      if (toast) toast.style.setProperty('display', 'none', 'important');
+                    }
+                  }
+                  var devScript = document.querySelector('script[data-nextjs-dev-overlay]');
+                  if (devScript) {
+                    devScript.style.setProperty('display', 'none', 'important');
+                  }
+                }
+                if (typeof window !== 'undefined') {
+                  window.addEventListener('DOMContentLoaded', hideDevOverlay);
+                  var devObserver = new MutationObserver(hideDevOverlay);
+                  devObserver.observe(document.documentElement, { childList: true, subtree: true });
+                }
               })();
             `,
           }}

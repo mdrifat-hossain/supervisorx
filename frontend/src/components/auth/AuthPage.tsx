@@ -140,51 +140,38 @@ export default function AuthPage({ initialMode = "login" }: AuthPageProps) {
             <ShaderCanvas variant="login" />
 
             <div className="relative z-10 w-full max-w-[580px] text-center space-y-lg px-4">
-              <div className="inline-flex items-center px-md py-xs rounded-full bg-primary/10 border border-primary/20 text-primary font-label-md animate-pulse">
-                <span className="material-symbols-outlined mr-2 text-[18px]">neurology</span>
-                AI SUPERVISOR ACTIVE
+              <div className="inline-flex items-center px-md py-xs rounded-full bg-primary/10 border border-primary/20 text-primary font-label-md">
+                <span className="material-symbols-outlined mr-2 text-[18px]">psychology</span>
+                AI RESEARCH SUPERVISOR
               </div>
-              <h1 className="font-display-lg text-display-lg text-on-surface tracking-tighter leading-none text-center">
-                Unify Your <span className="text-primary">Research</span> Cognition.
+              <h1 className="font-display-lg text-3xl sm:text-4xl lg:text-[44px] text-on-surface tracking-tight leading-tight text-center font-bold">
+                Grounded AI for <br />
+                <span className="text-primary">Academic Literature</span>
               </h1>
-              <p className="font-body-lg text-body-lg text-on-surface-variant w-full max-w-[460px] mx-auto text-center leading-relaxed">
-                SupervisorX bridges the gap between raw data and breakthrough insights with high-fidelity neural processing.
+              <p className="font-body-lg text-sm sm:text-base text-on-surface-variant w-full max-w-[480px] mx-auto text-center leading-relaxed">
+                Discover candidate papers from arXiv and OpenAlex, extract section-aware methodologies with PyMuPDF, and query evidence grounded with verified page citations.
               </p>
 
-              {/* Abstract Research Illustration Element */}
-              <div className="mt-2xl relative w-full max-w-[460px] mx-auto">
-                <div className="absolute -inset-4 bg-primary/20 blur-3xl rounded-full"></div>
-                <div className="glass-card p-xl rounded-xl border-outline-variant/30 animate-float">
-                  <div className="space-y-md">
-                    <div className="flex items-center gap-sm">
-                      <div className="w-3 h-3 rounded-full bg-error"></div>
-                      <div className="w-3 h-3 rounded-full bg-tertiary"></div>
-                      <div className="w-3 h-3 rounded-full bg-primary"></div>
-                    </div>
-                    <div className="h-2 w-full bg-surface-variant rounded-full overflow-hidden">
-                      <div className="h-full bg-primary w-2/3 transition-all duration-1000"></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-md pt-md">
-                      <div className="h-16 rounded-lg bg-surface-bright/50 border border-outline-variant/20 flex flex-col items-center justify-center">
-                        <span className="text-primary font-label-md text-label-md">98.4%</span>
-                        <span className="text-[10px] text-on-surface-variant uppercase tracking-widest">Precision</span>
-                      </div>
-                      <div className="h-16 rounded-lg bg-surface-bright/50 border border-outline-variant/20 flex flex-col items-center justify-center">
-                        <span className="text-tertiary font-label-md text-label-md">1.2ms</span>
-                        <span className="text-[10px] text-on-surface-variant uppercase tracking-widest">Latency</span>
-                      </div>
-                    </div>
-                  </div>
+              {/* Research Illustration Element */}
+              <div className="mt-xl relative w-full max-w-[480px] mx-auto">
+                <div className="absolute -inset-4 bg-primary/20 blur-3xl rounded-full pointer-events-none"></div>
+                <div className="relative w-full rounded-2xl glass-panel p-2 sm:p-3 shadow-2xl border border-outline-variant/30 overflow-hidden group">
+                  <img
+                    src="/login_page_animation.svg"
+                    alt="SupervisorX Research AI Workflow"
+                    className="w-full h-auto rounded-xl object-contain border border-outline-variant/20 shadow-inner transition-transform duration-500 group-hover:scale-[1.01]"
+                    loading="eager"
+                  />
                 </div>
               </div>
             </div>
 
             {/* Absolute Decorative Nodes */}
-            <div className="absolute top-10 left-10 opacity-20">
-              <span className="material-symbols-outlined text-[120px] text-primary rotate-12">account_tree</span>
+            <div className="absolute top-10 left-10 opacity-20 pointer-events-none">
+              <span className="material-symbols-outlined text-[100px] text-primary rotate-12">manage_search</span>
             </div>
-            <div className="absolute bottom-10 right-10 opacity-20">
-              <span className="material-symbols-outlined text-[100px] text-tertiary -rotate-12">monitoring</span>
+            <div className="absolute bottom-10 right-10 opacity-20 pointer-events-none">
+              <span className="material-symbols-outlined text-[90px] text-tertiary -rotate-12">picture_as_pdf</span>
             </div>
           </section>
 
@@ -206,7 +193,7 @@ export default function AuthPage({ initialMode = "login" }: AuthPageProps) {
             <div className="w-full max-w-[440px] space-y-xl">
               <div className="space-y-xs">
                 <h2 className="font-headline-lg text-headline-lg text-on-surface">Welcome back</h2>
-                <p className="text-on-surface-variant">Enter your credentials to access your research vault.</p>
+                <p className="text-on-surface-variant">Enter your credentials to access your research projects &amp; literature vault.</p>
               </div>
 
               {/* Glassmorphism Login Card */}
@@ -238,7 +225,7 @@ export default function AuthPage({ initialMode = "login" }: AuthPageProps) {
                   <div className="space-y-sm">
                     <div className="flex justify-between items-center">
                       <label className="font-label-md text-label-md text-on-surface-variant" htmlFor="password">
-                        ACCESS KEY
+                        PASSWORD
                       </label>
                       <a className="font-label-md text-label-md text-primary hover:underline underline-offset-4" href="#forgot">
                         Forgot Password?
@@ -441,7 +428,7 @@ export default function AuthPage({ initialMode = "login" }: AuthPageProps) {
             {/* Footer Small */}
             <footer className="absolute bottom-xl text-center">
               <p className="text-outline text-label-md tracking-wider opacity-60">
-                © 2024 SUPERVISORX AI RESEARCH LABS
+                © 2026 SUPERVISORX AI RESEARCH ASSISTANT
               </p>
             </footer>
           </section>
@@ -466,7 +453,7 @@ export default function AuthPage({ initialMode = "login" }: AuthPageProps) {
             <div className="w-full max-w-[440px] space-y-xl">
               <div className="space-y-xs">
                 <h2 className="font-headline-lg text-headline-lg text-on-surface">Create an Account</h2>
-                <p className="text-on-surface-variant">Setup your credentials to initialize your vault.</p>
+                <p className="text-on-surface-variant">Set up your credentials to initialize your research workspace.</p>
               </div>
 
               {/* Glassmorphism Register Card */}
@@ -583,7 +570,7 @@ export default function AuthPage({ initialMode = "login" }: AuthPageProps) {
                         </label>
                         <div className="relative group">
                           <span className="material-symbols-outlined absolute left-md top-1/2 -translate-y-1/2 text-outline group-focus-within:text-primary transition-colors">
-                            lock_reset
+                            lock
                           </span>
                           <input
                             className="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-xl py-md pl-[48px] pr-md text-on-surface focus:border-primary focus:ring-0 transition-all placeholder:text-outline-variant outline-none"
@@ -626,17 +613,17 @@ export default function AuthPage({ initialMode = "login" }: AuthPageProps) {
                     {regStatus === "initializing" ? (
                       <>
                         <span className="material-symbols-outlined animate-spin">sync</span>
-                        Initializing...
+                        Creating Account...
                       </>
                     ) : regStatus === "created" ? (
                       <>
                         <span className="material-symbols-outlined">check_circle</span>
-                        Vault Created
+                        Account Created
                       </>
                     ) : (
                       <>
-                        Initialize Vault
-                        <span className="material-symbols-outlined">add_moderator</span>
+                        Create Account
+                        <span className="material-symbols-outlined">arrow_forward</span>
                       </>
                     )}
                   </button>
@@ -771,39 +758,67 @@ export default function AuthPage({ initialMode = "login" }: AuthPageProps) {
             <ShaderCanvas variant="register" />
 
             <div className="relative z-10 w-full max-w-[580px] text-center space-y-lg px-4">
-              <h1 className="font-display-lg text-display-lg text-on-surface tracking-tighter leading-none text-center">
-                Join the Future of <br />
-                <span className="text-primary">AI Synthesis</span>.
+              <div className="inline-flex items-center px-md py-xs rounded-full bg-primary/10 border border-primary/20 text-primary font-label-md">
+                <span className="material-symbols-outlined mr-2 text-[18px]">school</span>
+                RESEARCH WORKSPACE
+              </div>
+              <h1 className="font-display-lg text-3xl sm:text-4xl lg:text-[44px] text-on-surface tracking-tight leading-tight text-center font-bold">
+                Accelerate Your <br />
+                <span className="text-primary">Research Literature</span> Workflow
               </h1>
-              <p className="font-body-lg text-body-lg text-on-surface-variant w-full max-w-[460px] mx-auto text-center leading-relaxed">
-                Welcome to SupervisorX Research Labs. Create your secure vault to begin orchestrating high-fidelity data models.
+              <p className="font-body-lg text-sm sm:text-base text-on-surface-variant w-full max-w-[480px] mx-auto text-center leading-relaxed">
+                Join students, researchers, and academics using SupervisorX to discover papers, verify citations, track project tasks, and synthesize findings.
               </p>
 
-              <div className="grid grid-cols-1 gap-md pt-xl w-full max-w-[460px] mx-auto">
-                <div className="flex items-center gap-md p-md rounded-xl bg-surface-container/40 border border-outline-variant/20 backdrop-blur-sm">
-                  <span className="material-symbols-outlined text-primary">hub</span>
-                  <div className="text-left">
-                    <p className="font-bold text-on-surface">Real-time AI Synthesis</p>
-                    <p className="text-label-md text-on-surface-variant">Instant neural processing of raw datasets.</p>
+              <div className="grid grid-cols-1 gap-md pt-lg w-full max-w-[480px] mx-auto">
+                <div className="flex items-center gap-md p-md rounded-xl bg-surface-container/60 border border-outline-variant/30 backdrop-blur-md text-left transition-all hover:border-primary/40">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-primary">travel_explore</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-on-surface">Candidate Paper Discovery</p>
+                    <p className="text-label-md text-on-surface-variant">Screen arXiv &amp; OpenAlex papers with relevance filtering and recency ranking.</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-md p-md rounded-xl bg-surface-container/40 border border-outline-variant/20 backdrop-blur-sm">
-                  <span className="material-symbols-outlined text-tertiary">language</span>
-                  <div className="text-left">
-                    <p className="font-bold text-on-surface">Global Knowledge Graph</p>
-                    <p className="text-label-md text-on-surface-variant">Connect insights across distributed networks.</p>
+                <div className="flex items-center gap-md p-md rounded-xl bg-surface-container/60 border border-outline-variant/30 backdrop-blur-md text-left transition-all hover:border-primary/40">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-primary">picture_as_pdf</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-on-surface">Section-Aware PyMuPDF Extraction</p>
+                    <p className="text-label-md text-on-surface-variant">Parse text, section hierarchies, figures, and page anchors into pgvector.</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-md p-md rounded-xl bg-surface-container/40 border border-outline-variant/20 backdrop-blur-sm">
-                  <span className="material-symbols-outlined text-primary">auto_settings</span>
-                  <div className="text-left">
-                    <p className="font-bold text-on-surface">Autonomous Pipeline Optimization</p>
-                    <p className="text-label-md text-on-surface-variant">Self-healing research workflows.</p>
+                <div className="flex items-center gap-md p-md rounded-xl bg-surface-container/60 border border-outline-variant/30 backdrop-blur-md text-left transition-all hover:border-primary/40">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-primary">verified</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-on-surface">Verifiable Citations with Page Numbers</p>
+                    <p className="text-label-md text-on-surface-variant">Evidence-grounded chatbot answers citing exact paper, section &amp; PDF page.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-md p-md rounded-xl bg-surface-container/60 border border-outline-variant/30 backdrop-blur-md text-left transition-all hover:border-primary/40">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-primary">description</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-on-surface">Structured PDF &amp; DOCX Export</p>
+                    <p className="text-label-md text-on-surface-variant">Export publication-ready synthesis reports with complete bibliographies.</p>
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Absolute Decorative Nodes */}
+            <div className="absolute top-10 right-10 opacity-20 pointer-events-none">
+              <span className="material-symbols-outlined text-[100px] text-primary rotate-12">folder_shared</span>
+            </div>
+            <div className="absolute bottom-10 left-10 opacity-20 pointer-events-none">
+              <span className="material-symbols-outlined text-[90px] text-tertiary -rotate-12">sticky_note_2</span>
             </div>
           </section>
         </div>
