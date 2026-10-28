@@ -1,23 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUserId, userOwnsProject } from "@/lib/project-access";
 import { logProjectActivity } from "@/lib/activity-logger";
-
-const BACKEND_URL =
-  process.env.BACKEND_URL ||
-  (process.env.DOCKER_ENV ? "http://backend:8000" : "http://localhost:8000");
-
-async function fetchFromBackend(endpoint: string) {
-  const urls = [BACKEND_URL, "http://backend:8000", "http://localhost:8000"];
-  for (const base of urls) {
-    try {
-      const res = await fetch(`${base}${endpoint}`, { cache: "no-store" });
-      if (res.ok) return await res.json();
-    } catch {
-      // try next url
-    }
-  }
-  throw new Error("Unable to reach Python arXiv backend service");
-}
+import { fetchFromBackend } from "@/lib/backend-api";
 
 export async function GET(
   req: Request,
@@ -50,7 +34,11 @@ export async function GET(
     if (endYear) endpoint += `&end_year=${endYear}`;
     if (excludeIds) endpoint += `&exclude_ids=${encodeURIComponent(excludeIds)}`;
 
-    const data = await fetchFromBackend(endpoint);
+    const backendRes = await fetchFromBackend(endpoint, { cache: "no-store" });
+    if (!backendRes.ok) {
+      throw new Error(`Backend search returned status ${backendRes.status}`);
+    }
+    const data = await backendRes.json();
     // Log search activity in background
     logProjectActivity(id, "paper_search", `Literature search: ${query.slice(0, 50)}`).catch(() => {});
     return NextResponse.json({ ...data, projectId: id });

@@ -1,25 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserId, userOwnsProject } from "@/lib/project-access";
 import { initProjectsTable } from "@/lib/db";
-
-const CANDIDATE_BACKEND_URLS = [
-  process.env.BACKEND_URL,
-  "http://backend:8000",
-  "http://localhost:8000",
-].filter(Boolean) as string[];
-
-async function fetchFromBackend(endpoint: string, options: RequestInit) {
-  let lastError: unknown = null;
-  for (const base of CANDIDATE_BACKEND_URLS) {
-    try {
-      const res = await fetch(`${base}${endpoint}`, options);
-      return res;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError || new Error("Could not reach Python backend service");
-}
+import { fetchFromBackend } from "@/lib/backend-api";
 
 export async function GET(
   req: NextRequest,

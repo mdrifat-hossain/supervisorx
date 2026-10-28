@@ -30,6 +30,10 @@ export const auth = betterAuth({
   database: pool,
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   secret: process.env.BETTER_AUTH_SECRET,
+  trustedOrigins: [
+    ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL.replace(/\/+$/, "")] : []),
+    ...(process.env.NODE_ENV !== "production" ? ["http://localhost:3000", "http://127.0.0.1:3000"] : []),
+  ],
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,

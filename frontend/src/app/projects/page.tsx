@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import ProjectsHub from "@/components/projects/ProjectsHub";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Projects | SupervisorX AI Research",
   description: "Explore, manage, and initialize academic research projects and workspaces in SupervisorX.",

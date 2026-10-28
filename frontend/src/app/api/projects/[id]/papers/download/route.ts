@@ -2,33 +2,7 @@ import { NextResponse } from "next/server";
 import { pool, initProjectsTable } from "@/lib/db";
 import { getUserId, userOwnsProject } from "@/lib/project-access";
 import { removePrivateObject, uploadPrivatePdf } from "@/lib/supabase-storage";
-
-const BACKEND_URL =
-  process.env.BACKEND_URL ||
-  (process.env.DOCKER_ENV ? "http://backend:8000" : "http://localhost:8000");
-
-async function postToBackend(endpoint: string, bodyData: unknown, userId: string) {
-  const apiKey = process.env.INTERNAL_API_KEY;
-  if (!apiKey) throw new Error("Internal backend authentication is not configured");
-  const urls = [BACKEND_URL, "http://backend:8000", "http://localhost:8000"];
-  for (const base of urls) {
-    try {
-      const res = await fetch(`${base}${endpoint}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Internal-Api-Key": apiKey,
-          "X-User-Id": userId,
-        },
-        body: JSON.stringify(bodyData),
-      });
-      if (res.ok) return res;
-    } catch {
-      // try next url
-    }
-  }
-  throw new Error("Unable to reach Python arXiv backend service");
-}
+import { fetchFromBackend } from "@/lib/backend-api";
 
 export async function POST(
   req: Request,
@@ -52,12 +26,27 @@ export async function POST(
       );
     }
 
-    const response = await postToBackend("/api/papers/download", {
-      paper_id,
-      pdf_url: body.pdf_url,
-      title: body.title,
-      projectId: id,
-    }, userId);
+    const apiKey = process.env.INTERNAL_API_KEY;
+    if (!apiKey) throw new Error("Internal backend authentication is not configured");
+
+    const response = await fetchFromBackend("/api/papers/download", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Api-Key": apiKey,
+        "X-User-Id": userId,
+      },
+      body: JSON.stringify({
+        paper_id,
+        pdf_url: body.pdf_url,
+        title: body.title,
+        projectId: id,
+      }),
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Backend download failed with status ${response.status}: ${errText}`);
+    }
     const bytes = Buffer.from(await response.arrayBuffer());
     const disposition = response.headers.get("content-disposition") || "";
     const filename = decodeURIComponent(disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1] || disposition.match(/filename="?([^";]+)"?/i)?.[1] || `${paper_id}.pdf`);

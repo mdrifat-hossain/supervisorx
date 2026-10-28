@@ -7,8 +7,6 @@ const nextConfig: NextConfig = {
   /* config options here */
   // Disable development indicator UI (e.g. "N Issues" badge); can be re-enabled later
   devIndicators: false,
-  cacheComponents: true,
-  partialPrefetching: true,
   turbopack: {
     rules: {
       "*.css": {

@@ -12,7 +12,7 @@ export async function getUserId(request: Request): Promise<string | null> {
   // Resilient fallback: lookup session token directly from postgres if auth.api.getSession failed to parse
   try {
     const cookieHeader = request.headers.get("cookie") || "";
-    const match = cookieHeader.match(/better-auth\.session_token=([^;]+)/);
+    const match = cookieHeader.match(/(?:__Secure-)?better-auth\.session_token=([^;]+)/);
     if (match && match[1]) {
       const raw = decodeURIComponent(match[1]);
       const token = raw.split(".")[0];
@@ -36,5 +36,5 @@ export async function userOwnsProject(userId: string, projectId: string): Promis
     "SELECT 1 FROM projects WHERE id = $1 AND owner_user_id = $2 LIMIT 1",
     [projectId, userId]
   );
-  return result.rowCount === 1;
+  return (result.rowCount ?? 0) > 0;
 }
