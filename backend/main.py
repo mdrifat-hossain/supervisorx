@@ -4,7 +4,7 @@ import shutil
 import tempfile
 from urllib.parse import quote, urlsplit, urlunsplit
 from typing import Optional, Union, List, Dict, Any
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from arxiv_service import (
     search_papers,
     download_paper,
+    download_paper_bytes,
     list_downloaded_paper_ids,
     is_paper_downloaded,
     DEFAULT_DOWNLOAD_DIR,
@@ -166,41 +167,32 @@ def download_arxiv_paper(
     x_internal_api_key: Optional[str] = Header(None),
     x_user_id: Optional[str] = Header(None),
 ):
-    """Download a PDF to a temporary transfer directory for Supabase upload."""
-    transfer_dir = None
+    """Download a PDF directly in memory for Supabase upload without writing to local disk."""
     try:
         _require_project_access(x_user_id, x_internal_api_key, req.projectId)
         if not req.paper_id or not req.paper_id.strip():
             raise HTTPException(status_code=400, detail="Paper ID is required")
 
-        transfer_dir = tempfile.mkdtemp(prefix="researchpilot-paper-")
-        filepath = download_paper(
+        pdf_bytes, filename = download_paper_bytes(
             paper_id=req.paper_id.strip(),
-            download_dir=transfer_dir,
             pdf_url=req.pdf_url,
             title=req.title,
         )
-        filename = os.path.basename(filepath)
-        file_size = os.path.getsize(filepath)
 
-        return FileResponse(
-            filepath,
+        return Response(
+            content=pdf_bytes,
             media_type="application/pdf",
-            filename=filename,
-            headers={"X-Paper-Id": req.paper_id, "X-File-Size": str(file_size)},
-            background=BackgroundTask(shutil.rmtree, transfer_dir, ignore_errors=True),
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Paper-Id": req.paper_id,
+                "X-File-Size": str(len(pdf_bytes)),
+            },
         )
     except HTTPException:
-        if transfer_dir:
-            shutil.rmtree(transfer_dir, ignore_errors=True)
         raise
     except ValueError as ve:
-        if transfer_dir:
-            shutil.rmtree(transfer_dir, ignore_errors=True)
         raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
-        if transfer_dir:
-            shutil.rmtree(transfer_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Failed to download paper: {e}")
 
 
@@ -687,24 +679,30 @@ def download_project_document(
     x_internal_api_key: Optional[str] = Header(None),
     x_user_id: Optional[str] = Header(None),
 ):
-    """Securely downloads a generated PDF or DOCX report."""
-    from services.document_service import get_document_file_path
+    """Securely downloads a generated PDF or DOCX report directly from Supabase Storage."""
+    from services.document_service import get_document_bytes
 
     _require_project_access(x_user_id, x_internal_api_key, project_id)
 
     fmt_clean = format.lower().strip()
-    file_path = get_document_file_path(project_id, doc_id, fmt_clean)
-    if not file_path or not os.path.isfile(file_path):
-        raise HTTPException(status_code=404, detail="Document file not found")
+    result = get_document_bytes(project_id, doc_id, fmt_clean)
+    if not result:
+        raise HTTPException(status_code=404, detail="Document file not found in storage")
 
-    ext = ".docx" if fmt_clean == "docx" else ".pdf"
-    media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if fmt_clean == "docx" else "application/pdf"
-    filename = f"SupervisorX_{doc_id}{ext}"
+    data, filename = result
+    media_type = (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        if fmt_clean == "docx"
+        else "application/pdf"
+    )
 
-    return FileResponse(
-        path=file_path,
-        filename=filename,
+    return Response(
+        content=data,
         media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(data)),
+        },
     )
 
 

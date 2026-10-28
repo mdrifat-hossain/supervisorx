@@ -8,7 +8,7 @@ import os
 import re
 import time
 import logging
-from typing import List, Dict, Optional, Any, Set, Union
+from typing import List, Dict, Optional, Any, Set, Union, Tuple
 import arxiv
 import requests
 
@@ -547,6 +547,97 @@ def search_papers(
     return res.get("papers", [])
 
 
+def download_paper_bytes(
+    paper_id: str,
+    pdf_url: Optional[str] = None,
+    title: Optional[str] = None,
+) -> Tuple[bytes, str]:
+    """
+    Downloads paper PDF directly into memory as bytes.
+    Supports direct Open Access PDF download from URL, arXiv IDs, and OpenAlex works.
+
+    Returns:
+        Tuple of (pdf_bytes, filename)
+    """
+    clean_id = paper_id.strip()
+    safe_id = clean_id.replace("/", "_").replace(":", "_")
+    clean_title = _sanitize_filename(title or "paper")[:60]
+    filename = f"{safe_id}_{clean_title}.pdf"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 (SupervisorX Academic Assistant; mailto:contact@supervisorx.ai)"
+    }
+
+    # Case A: Direct open-access PDF URL provided
+    if pdf_url and (pdf_url.startswith("http://") or pdf_url.startswith("https://")):
+        try:
+            logger.info(f"Downloading directly from open-access PDF URL: {pdf_url}")
+            resp = requests.get(pdf_url, stream=True, headers=headers, timeout=35, allow_redirects=True)
+            if resp.status_code == 200:
+                content = resp.content
+                if len(content) > 1000 and content[:4] == b"%PDF":
+                    logger.info(f"Successfully downloaded {filename} ({len(content)} bytes) from {pdf_url}")
+                    return content, filename
+                else:
+                    logger.warning(f"Downloaded content from {pdf_url} was invalid or not a valid PDF")
+        except Exception as e:
+            logger.warning(f"Direct PDF download failed from {pdf_url}: {e}. Trying fallback methods...")
+
+    # Case B: arXiv ID download
+    arxiv_id_match = re.search(r"(\d{4}\.\d{4,5}(?:v\d+)?)", clean_id)
+    arxiv_id = arxiv_id_match.group(1) if arxiv_id_match else None
+
+    if arxiv_id:
+        arxiv_pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+        try:
+            logger.info(f"Downloading arXiv preprint from {arxiv_pdf_url}")
+            resp = requests.get(arxiv_pdf_url, stream=True, headers=headers, timeout=35, allow_redirects=True)
+            if resp.status_code == 200:
+                content = resp.content
+                if len(content) > 1000 and content[:4] == b"%PDF":
+                    logger.info(f"Successfully downloaded arXiv PDF {filename} ({len(content)} bytes)")
+                    return content, filename
+        except Exception as e:
+            logger.warning(f"Direct arXiv URL download failed: {e}. Falling back to arxiv client search...")
+
+        # Fallback to arxiv client search
+        try:
+            search = arxiv.Search(id_list=[arxiv_id])
+            results = list(_client.results(search))
+            if results:
+                paper = results[0]
+                paper_url = paper.pdf_url
+                if not paper_url.endswith(".pdf"):
+                    paper_url += ".pdf"
+                resp = requests.get(paper_url, stream=True, headers=headers, timeout=35)
+                if resp.status_code == 200:
+                    content = resp.content
+                    if len(content) > 1000 and content[:4] == b"%PDF":
+                        return content, filename
+        except Exception as err:
+            logger.error(f"ArXiv client download failed for {arxiv_id}: {err}")
+
+    # Case C: OpenAlex work lookup if clean_id is oa_W... and initial attempt had no pdf_url
+    if clean_id.startswith("oa_"):
+        work_id = clean_id.replace("oa_", "")
+        try:
+            logger.info(f"Querying OpenAlex work {work_id} for open access download location...")
+            oa_resp = requests.get(f"https://api.openalex.org/works/{work_id}", headers=headers, timeout=12)
+            if oa_resp.status_code == 200:
+                oa_data = oa_resp.json()
+                oa_url = (oa_data.get("best_oa_location") or {}).get("pdf_url") or (oa_data.get("open_access") or {}).get("oa_url")
+                if oa_url:
+                    resp = requests.get(oa_url, stream=True, headers=headers, timeout=35, allow_redirects=True)
+                    if resp.status_code == 200:
+                        content = resp.content
+                        if len(content) > 1000 and content[:4] == b"%PDF":
+                            return content, filename
+        except Exception as oa_err:
+            logger.error(f"Failed to fetch OpenAlex work {work_id}: {oa_err}")
+
+    raise ValueError(f"Could not download paper '{clean_id}'. No accessible open-access PDF was available.")
+
+
 def download_paper(
     paper_id: str,
     download_dir: str = DEFAULT_DOWNLOAD_DIR,
@@ -554,17 +645,8 @@ def download_paper(
     title: Optional[str] = None,
 ) -> str:
     """
-    Downloads paper PDF into the project common storage directory.
-    Supports direct Open Access PDF download from URL, arXiv IDs, and OpenAlex works.
-
-    Args:
-        paper_id: Clean ID (e.g. '2301.12345v1' or 'oa_W...')
-        download_dir: Target directory where papers will be stored
-        pdf_url: Optional direct open-access PDF URL
-        title: Optional paper title for human-readable filename
-
-    Returns:
-        Absolute filepath to the saved PDF file.
+    Downloads paper PDF into the specified storage directory.
+    Uses download_paper_bytes internally.
     """
     clean_id = paper_id.strip()
     safe_id = clean_id.replace("/", "_").replace(":", "_")
@@ -587,106 +669,10 @@ def download_paper(
                 logger.info(f"Found existing file {full_existing} for {clean_id}")
                 return os.path.abspath(full_existing)
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 (SupervisorX Academic Assistant; mailto:contact@supervisorx.ai)"
-    }
-
-    # Case A: Direct open-access PDF URL provided
-    if pdf_url and (pdf_url.startswith("http://") or pdf_url.startswith("https://")):
-        try:
-            logger.info(f"Downloading directly from open-access PDF URL: {pdf_url}")
-            resp = requests.get(pdf_url, stream=True, headers=headers, timeout=35, allow_redirects=True)
-            resp.raise_for_status()
-
-            with open(target_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=16384):
-                    if chunk:
-                        f.write(chunk)
-
-            if os.path.exists(target_path) and os.path.getsize(target_path) > 1000:
-                file_size = os.path.getsize(target_path)
-                logger.info(f"Successfully downloaded {target_path} ({file_size} bytes)")
-                return os.path.abspath(target_path)
-            else:
-                if os.path.exists(target_path):
-                    os.remove(target_path)
-                logger.warning(f"Downloaded file was invalid or too small from {pdf_url}")
-        except Exception as e:
-            logger.warning(f"Direct PDF download failed from {pdf_url}: {e}. Trying fallback methods...")
-            if os.path.exists(target_path):
-                try:
-                    os.remove(target_path)
-                except Exception:
-                    pass
-
-    # Case B: arXiv ID download
-    arxiv_id_match = re.search(r"(\d{4}\.\d{4,5}(?:v\d+)?)", clean_id)
-    arxiv_id = arxiv_id_match.group(1) if arxiv_id_match else None
-
-    if arxiv_id:
-        arxiv_pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
-        try:
-            logger.info(f"Downloading arXiv preprint from {arxiv_pdf_url}")
-            resp = requests.get(arxiv_pdf_url, stream=True, headers=headers, timeout=35, allow_redirects=True)
-            resp.raise_for_status()
-
-            with open(target_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=16384):
-                    if chunk:
-                        f.write(chunk)
-
-            if os.path.exists(target_path) and os.path.getsize(target_path) > 1000:
-                file_size = os.path.getsize(target_path)
-                logger.info(f"Successfully downloaded arXiv PDF {target_path} ({file_size} bytes)")
-                return os.path.abspath(target_path)
-            else:
-                if os.path.exists(target_path):
-                    os.remove(target_path)
-        except Exception as e:
-            logger.warning(f"Direct arXiv URL download failed: {e}. Falling back to arxiv client search...")
-
-        # Fallback to arxiv client search
-        try:
-            search = arxiv.Search(id_list=[arxiv_id])
-            results = list(_client.results(search))
-            if results:
-                paper = results[0]
-                paper_url = paper.pdf_url
-                if not paper_url.endswith(".pdf"):
-                    paper_url += ".pdf"
-                resp = requests.get(paper_url, stream=True, headers=headers, timeout=35)
-                resp.raise_for_status()
-                with open(target_path, "wb") as f:
-                    for chunk in resp.iter_content(chunk_size=16384):
-                        if chunk:
-                            f.write(chunk)
-                if os.path.exists(target_path) and os.path.getsize(target_path) > 1000:
-                    return os.path.abspath(target_path)
-        except Exception as err:
-            logger.error(f"ArXiv client download failed for {arxiv_id}: {err}")
-
-    # Case C: OpenAlex work lookup if clean_id is oa_W... and initial attempt had no pdf_url
-    if clean_id.startswith("oa_"):
-        work_id = clean_id.replace("oa_", "")
-        try:
-            logger.info(f"Querying OpenAlex work {work_id} for open access download location...")
-            oa_resp = requests.get(f"https://api.openalex.org/works/{work_id}", headers=headers, timeout=12)
-            if oa_resp.status_code == 200:
-                oa_data = oa_resp.json()
-                oa_url = (oa_data.get("best_oa_location") or {}).get("pdf_url") or (oa_data.get("open_access") or {}).get("oa_url")
-                if oa_url:
-                    resp = requests.get(oa_url, stream=True, headers=headers, timeout=35, allow_redirects=True)
-                    resp.raise_for_status()
-                    with open(target_path, "wb") as f:
-                        for chunk in resp.iter_content(chunk_size=16384):
-                            if chunk:
-                                f.write(chunk)
-                    if os.path.exists(target_path) and os.path.getsize(target_path) > 1000:
-                        return os.path.abspath(target_path)
-        except Exception as oa_err:
-            logger.error(f"Failed to fetch OpenAlex work {work_id}: {oa_err}")
-
-    raise ValueError(f"Could not download paper '{clean_id}'. No accessible open-access PDF was available.")
+    content, fname = download_paper_bytes(paper_id=paper_id, pdf_url=pdf_url, title=title)
+    with open(target_path, "wb") as f:
+        f.write(content)
+    return os.path.abspath(target_path)
 
 
 # =====================================================================

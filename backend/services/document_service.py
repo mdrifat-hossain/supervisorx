@@ -14,9 +14,8 @@ from services.pdf_generator import generate_pdf_document
 
 logger = logging.getLogger("document_service")
 
-# Local cache directory for generated reports
+# Optional legacy local cache directory (unused in cloud-first operation)
 BASE_DOCS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "generated_documents")
-os.makedirs(BASE_DOCS_DIR, exist_ok=True)
 
 
 def _sanitize_filename(name: str) -> str:
@@ -183,46 +182,121 @@ def store_document_files(
     docx_bytes: Optional[bytes] = None,
 ) -> Tuple[Optional[str], Optional[str]]:
     """
-    Stores generated PDF and/or DOCX bytes both locally and to Supabase Storage.
+    Stores generated PDF and/or DOCX bytes directly to Supabase Storage.
     Returns (pdf_storage_path, docx_storage_path).
     """
-    project_dir = os.path.join(BASE_DOCS_DIR, _sanitize_filename(project_id))
-    os.makedirs(project_dir, exist_ok=True)
-
     pdf_storage_path: Optional[str] = None
     docx_storage_path: Optional[str] = None
     bucket = settings.SUPABASE_STORAGE_BUCKET
 
     if pdf_bytes:
-        # Local backup
-        pdf_path = os.path.join(project_dir, f"{doc_id}.pdf")
-        with open(pdf_path, "wb") as f:
-            f.write(pdf_bytes)
-
-        # Supabase cloud upload
         pdf_storage_path = f"{project_id}/reports/{doc_id}/{clean_title}.pdf"
+        canonical_path = f"{project_id}/reports/{doc_id}/{doc_id}.pdf"
         upload_file_to_supabase(bucket, pdf_storage_path, pdf_bytes, "application/pdf")
+        if canonical_path != pdf_storage_path:
+            upload_file_to_supabase(bucket, canonical_path, pdf_bytes, "application/pdf")
 
     if docx_bytes:
-        # Local backup
-        docx_path = os.path.join(project_dir, f"{doc_id}.docx")
-        with open(docx_path, "wb") as f:
-            f.write(docx_bytes)
-
-        # Supabase cloud upload
         docx_storage_path = f"{project_id}/reports/{doc_id}/{clean_title}.docx"
-        upload_file_to_supabase(
-            bucket,
-            docx_storage_path,
-            docx_bytes,
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
+        canonical_path = f"{project_id}/reports/{doc_id}/{doc_id}.docx"
+        ctype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        upload_file_to_supabase(bucket, docx_storage_path, docx_bytes, ctype)
+        if canonical_path != docx_storage_path:
+            upload_file_to_supabase(bucket, canonical_path, docx_bytes, ctype)
 
     return pdf_storage_path, docx_storage_path
 
 
+def get_document_bytes(project_id: str, doc_id: str, format_type: str = "pdf") -> Optional[Tuple[bytes, str]]:
+    """
+    Retrieves document bytes and suggested filename directly from Supabase Storage.
+    Returns (file_bytes, filename) or None.
+    """
+    ext = ".docx" if format_type.lower() == "docx" else ".pdf"
+    bucket = settings.SUPABASE_STORAGE_BUCKET
+
+    # 1. Check PostgreSQL project_papers for the exact storage_path recorded during generation
+    try:
+        from services.paper_analysis_pipeline import get_db_connection
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT title, storage_path, storage_bucket
+                    FROM project_papers
+                    WHERE project_id = %s AND (paper_id = %s OR id = %s)
+                    LIMIT 1
+                    """,
+                    (project_id, f"report-{doc_id}", f"{project_id}_report_{doc_id}"),
+                )
+                row = cur.fetchone()
+                if row:
+                    title, stored_path, stored_bucket = row
+                    target_bucket = stored_bucket or bucket
+                    if stored_path:
+                        if ext == ".docx" and stored_path.endswith(".pdf"):
+                            candidate = stored_path[:-4] + ".docx"
+                        elif ext == ".pdf" and stored_path.endswith(".docx"):
+                            candidate = stored_path[:-5] + ".pdf"
+                        else:
+                            candidate = stored_path
+                        data = download_file_from_supabase(target_bucket, candidate)
+                        if data:
+                            clean_t = _sanitize_filename(title or doc_id)
+                            filename = f"SupervisorX_{clean_t}{ext}"
+                            return data, filename
+    except Exception as e:
+        logger.warning(f"Could not query project_papers for report path: {e}")
+
+    # 2. Check canonical and common candidate paths in Supabase Storage
+    candidates = [
+        f"{project_id}/reports/{doc_id}/{doc_id}{ext}",
+        f"{project_id}/reports/{doc_id}/SupervisorX_{doc_id}{ext}",
+    ]
+    for candidate in candidates:
+        data = download_file_from_supabase(bucket, candidate)
+        if data:
+            filename = f"SupervisorX_{doc_id}{ext}"
+            return data, filename
+
+    # 3. Dynamic listing search under prefix in Supabase Storage
+    try:
+        supabase_url = settings.SUPABASE_URL.rstrip("/")
+        secret_key = settings.SUPABASE_SECRET_KEY
+        if supabase_url and secret_key:
+            headers = {"apikey": secret_key, "Authorization": f"Bearer {secret_key}"}
+            prefix = f"{project_id}/reports/{doc_id}"
+            res = requests.post(
+                f"{supabase_url}/storage/v1/object/list/{bucket}",
+                headers=headers,
+                json={"prefix": prefix, "limit": 20},
+                timeout=15,
+            )
+            if res.status_code == 200:
+                for item in res.json():
+                    name = item.get("name", "")
+                    if name.lower().endswith(ext):
+                        full_path = f"{prefix}/{name}"
+                        data = download_file_from_supabase(bucket, full_path)
+                        if data:
+                            clean_f = name if name.startswith("SupervisorX_") else f"SupervisorX_{name}"
+                            return data, clean_f
+    except Exception as e:
+        logger.warning(f"Error querying Supabase storage list for {doc_id}: {e}")
+
+    # 4. Fallback check for local file in BASE_DOCS_DIR
+    project_dir = os.path.join(BASE_DOCS_DIR, _sanitize_filename(project_id))
+    local_path = os.path.join(project_dir, f"{doc_id}{ext}")
+    if os.path.isfile(local_path):
+        with open(local_path, "rb") as f:
+            data = f.read()
+        return data, f"SupervisorX_{doc_id}{ext}"
+
+    return None
+
+
 def get_document_file_path(project_id: str, doc_id: str, format_type: str = "pdf") -> Optional[str]:
-    """Retrieves the file path of a previously generated document from local cache or Supabase Storage."""
+    """Retrieves the file path of a previously generated document."""
     ext = ".docx" if format_type.lower() == "docx" else ".pdf"
     project_dir = os.path.join(BASE_DOCS_DIR, _sanitize_filename(project_id))
     file_path = os.path.join(project_dir, f"{doc_id}{ext}")
@@ -230,18 +304,13 @@ def get_document_file_path(project_id: str, doc_id: str, format_type: str = "pdf
     if os.path.isfile(file_path):
         return file_path
 
-    # Try downloading from Supabase Storage if missing locally
-    bucket = settings.SUPABASE_STORAGE_BUCKET
-    for candidate in [
-        f"{project_id}/reports/{doc_id}/SupervisorX_{doc_id}{ext}",
-        f"{project_id}/reports/{doc_id}/{doc_id}{ext}",
-    ]:
-        data = download_file_from_supabase(bucket, candidate)
-        if data:
-            os.makedirs(project_dir, exist_ok=True)
-            with open(file_path, "wb") as f:
-                f.write(data)
-            return file_path
+    res = get_document_bytes(project_id, doc_id, format_type)
+    if res:
+        data, _ = res
+        os.makedirs(project_dir, exist_ok=True)
+        with open(file_path, "wb") as f:
+            f.write(data)
+        return file_path
 
     return None
 

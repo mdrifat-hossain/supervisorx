@@ -47,6 +47,12 @@ Thumbs.db
 *.sqlite3
 *.db
 backups/
+backend/data/
+backend/storage/
+storage/
+data/
+*.pdf
+*.docx
 
 # Secrets and private keys
 *.pem
