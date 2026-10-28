@@ -177,6 +177,26 @@ ResearchPilot (SupervisorX)
 └── project_summary.md      # Concise technical architecture & design specification
 ```
 
+## 📸 Application Screenshots
+
+### 1. Dashboard
+![SupervisorX Dashboard](screenshots/dashboard.png)
+
+### 2. Research Workspace and Reports
+![Research Workspace](screenshots/project-dashboard.png)
+
+
+### 3. Research Paper Discovery
+![Research Paper Discovery](screenshots/paper-discovery.png)
+
+### 4. AI Research Chat
+![AI Research Chat](screenshots/research-chat.png)
+
+### 5. Paper Analysis
+![Research Paper Analysis](screenshots/paper-analysis.png)
+
+
+
 ---
 
 ## 💻 Local Setup & Getting Started
