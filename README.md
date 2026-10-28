@@ -22,10 +22,10 @@
 ---
 
 > [!IMPORTANT]
-> **Quick Access Links:**
-> - 🌐 **Live Application Deployment:** [Launch SupervisorX (Live Demo)](URL_PLACEHOLDER) *(Add your deployment URL here)*
-> - 🎥 **System Walkthrough & Video Demo:** [Watch Demo Video](URL_PLACEHOLDER) *(Add your demonstration video URL here)*
-
+## 🚀 Quick Access Links
+- 🌐 **Live Application:** [Launch SupervisorX](https://supervisorx.onrender.com)
+- 🎥 **System Walkthrough & Video Demo:** [Watch the Demo](https://drive.google.com/drive/folders/1mFxcdEu2xUNdVA3ss5RCPRMJ4a4eet8C?usp=drive_link)
+- 📄 **Project Proposal & Final Report:** [Access Project Documents](https://drive.google.com/drive/folders/1mFxcdEu2xUNdVA3ss5RCPRMJ4a4eet8C?usp=drive_link)
 ---
 
 ## 📌 Problem & Vision
