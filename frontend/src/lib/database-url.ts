@@ -15,3 +15,7 @@ export function getDatabaseUrl(): string {
   }
   return url.toString();
 }
+
+export function hasDatabaseUrl(): boolean {
+  return Boolean((process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL)?.trim());
+}

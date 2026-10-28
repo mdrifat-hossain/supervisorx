@@ -1,25 +1,55 @@
 import { Pool } from "pg";
 import { getDatabaseUrl } from "./database-url";
 
-const connectionString = getDatabaseUrl();
-
-let pool: Pool;
-
 declare global {
   // eslint-disable-next-line no-var
   var __postgres_pool: Pool | undefined;
 }
 
-if (process.env.NODE_ENV === "production") {
-  pool = new Pool({ connectionString });
-} else {
-  if (!global.__postgres_pool) {
-    global.__postgres_pool = new Pool({ connectionString });
+let cachedPool: Pool | undefined = global.__postgres_pool;
+
+/**
+ * Returns the active pg.Pool instance.
+ * Connection configuration is evaluated lazily only when a query/connection is made.
+ */
+export function getPool(): Pool {
+  if (!cachedPool) {
+    const connectionString = getDatabaseUrl();
+    cachedPool = new Pool({ connectionString });
+    if (process.env.NODE_ENV !== "production") {
+      global.__postgres_pool = cachedPool;
+    }
   }
-  pool = global.__postgres_pool;
+  return cachedPool;
 }
 
-export { pool };
+/**
+ * Lazy proxy wrapping pg.Pool.
+ * Evaluates getPool() only when an actual property or method (query, connect, etc.)
+ * is accessed at runtime. Module evaluation/imports during `next build` will not trigger
+ * database configuration checks.
+ */
+const poolTarget = Object.create(Pool.prototype) as Pool;
+export const pool: Pool = new Proxy(poolTarget, {
+  get(_target, prop, receiver) {
+    // Avoid triggering getPool on promise/thenable checks
+    if (prop === "then") return undefined;
+    const instance = getPool();
+    const value = Reflect.get(instance, prop, receiver);
+    if (typeof value === "function") {
+      return value.bind(instance);
+    }
+    return value;
+  },
+  set(_target, prop, value, receiver) {
+    const instance = getPool();
+    return Reflect.set(instance, prop, value, receiver);
+  },
+  has(_target, prop) {
+    // Check poolTarget/Pool.prototype directly so existence checks don't trigger connection initialization
+    return Reflect.has(poolTarget, prop);
+  },
+});
 
 let initialized = false;
 
